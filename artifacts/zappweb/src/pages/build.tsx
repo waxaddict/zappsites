@@ -98,139 +98,217 @@ function CameraColourPicker({ onColour }: { onColour: (hex: string) => void }) {
 }
 
 // ── AI Logo Extractor ─────────────────────────────────────────────────────────
-type LogoState = "idle" | "capturing" | "processing" | "done" | "error";
+type LogoState = "idle" | "processing" | "review" | "error";
 
 function LogoExtractor({
   businessName, logoUrl, onLogoUrl,
 }: { businessName: string; logoUrl: string; onLogoUrl: (url: string) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<LogoState>("idle");
+  // Pending file kept for retry if network drops
+  const pendingFile = useRef<File | null>(null);
+  // Extracted result waiting for user to approve
+  const [extractedUrl, setExtractedUrl] = useState<string>("");
+
+  async function runExtraction(file: File) {
+    setState("processing");
+
+    // Mobile browsers (especially iOS) briefly suspend network when the camera
+    // app closes. A short delay lets the browser fully resurface before we send.
+    await new Promise(r => setTimeout(r, 350));
+
+    let lastErr: Error = new Error("Extraction failed");
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        toast.info(`Connection dropped — retrying (${attempt + 1}/3)…`);
+        await new Promise(r => setTimeout(r, 1200 * attempt));
+      }
+      try {
+        // Fresh FormData each attempt — same File object is fine to re-use
+        const fd = new FormData();
+        fd.append("photo", file);
+        fd.append("businessName", businessName || "business");
+
+        const res = await fetch("/api/media/extract-logo", { method: "POST", body: fd });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error((body as { error?: string }).error || "Extraction failed");
+        }
+        const data = await res.json() as { logoUrl: string };
+        setExtractedUrl(data.logoUrl);
+        setState("review");
+        return;
+      } catch (err) {
+        lastErr = err instanceof Error ? err : new Error("Network error");
+        // Only retry on network errors, not server errors
+        if (lastErr.message !== "Network error" && lastErr.message !== "Failed to fetch") break;
+      }
+    }
+
+    setState("error");
+    toast.error(lastErr.message);
+  }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    pendingFile.current = file;
     e.target.value = "";
-    setState("processing");
-    toast.info("Analysing photo and extracting logo — this takes ~15 seconds…");
-
-    try {
-      const fd = new FormData();
-      fd.append("photo", file);
-      fd.append("businessName", businessName || "business");
-
-      const res = await fetch("/api/media/extract-logo", { method: "POST", body: fd });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error || "Extraction failed");
-      }
-      const data = await res.json() as { logoUrl: string };
-      onLogoUrl(data.logoUrl);
-      setState("done");
-      toast.success("Logo extracted! Preview it below, or retake if needed.");
-    } catch (err) {
-      setState("error");
-      toast.error(err instanceof Error ? err.message : "Logo extraction failed");
-    }
+    await runExtraction(file);
   }
 
-  const isProcessing = state === "processing";
+  function handleSave() {
+    onLogoUrl(extractedUrl);
+    setExtractedUrl("");
+    setState("idle");
+  }
+
+  function handleRetake() {
+    setExtractedUrl("");
+    setState("idle");
+    fileRef.current?.click();
+  }
+
+  function handleRetry() {
+    if (pendingFile.current) runExtraction(pendingFile.current);
+  }
 
   return (
     <div className="space-y-3">
-      {/* URL paste field */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          <input
-            type="url"
-            value={logoUrl}
-            onChange={e => { onLogoUrl(e.target.value); setState("idle"); }}
-            placeholder="https://example.com/logo.png  (or use camera below)"
-            className="w-full pl-9 pr-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-            data-testid="input-logo-url"
-          />
+      {/* URL paste field — hidden while reviewing an extraction */}
+      {state !== "review" && (
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              type="url"
+              value={logoUrl}
+              onChange={e => { onLogoUrl(e.target.value); setState("idle"); }}
+              placeholder="https://example.com/logo.png  (or use camera below)"
+              className="w-full pl-9 pr-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              data-testid="input-logo-url"
+            />
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Camera / AI extract button */}
+      {/* Hidden camera input */}
       <input ref={fileRef} type="file" accept="image/*" capture="environment"
         onChange={handleFile} className="hidden" aria-label="Take photo to extract logo" />
 
-      <button
-        type="button"
-        onClick={() => { setState("capturing"); fileRef.current?.click(); }}
-        disabled={isProcessing}
-        className={`w-full flex items-center justify-center gap-2.5 py-3 rounded-xl border-2 border-dashed text-sm font-medium transition-all
-          ${isProcessing
-            ? "border-primary/30 text-primary/60 bg-primary/5 cursor-wait"
-            : "border-border hover:border-primary/50 hover:bg-primary/5 text-muted-foreground hover:text-foreground cursor-pointer"
-          }`}
-        data-testid="button-extract-logo"
-      >
-        {isProcessing ? (
-          <>
-            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            AI is extracting logo…
-          </>
-        ) : (
-          <>
-            <Camera className="w-4 h-4" />
-            <Sparkles className="w-4 h-4" />
-            Photo a flyer, letterhead or shop sign — AI strips the logo
-          </>
-        )}
-      </button>
+      {/* ── Review screen: show extracted logo, Save / Retake ── */}
+      {state === "review" && extractedUrl && (
+        <div className="rounded-2xl border-2 border-primary/30 bg-card overflow-hidden shadow-sm">
+          <div className="px-4 pt-4 pb-2 flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-primary" />
+            <span className="text-sm font-semibold text-foreground">Logo extracted</span>
+            <span className="text-xs text-muted-foreground ml-auto">Review before saving</span>
+          </div>
 
-      {/* Preview of extracted logo */}
-      {logoUrl && state === "done" && (
-        <div className="rounded-xl border border-border overflow-hidden">
-          {/* Theme-adaptive preview strip */}
-          <div className="grid grid-cols-2">
-            <div className="bg-white flex items-center justify-center p-5 min-h-[80px]">
-              <img src={logoUrl} alt="Logo light preview" className="max-h-14 max-w-full object-contain" />
+          {/* Light + dark preview */}
+          <div className="grid grid-cols-2 mx-4 mb-3 rounded-xl overflow-hidden border border-border">
+            <div className="bg-white flex items-center justify-center p-6 min-h-[100px]">
+              <img src={extractedUrl} alt="Logo on light background"
+                className="max-h-16 max-w-full object-contain" />
             </div>
-            <div className="bg-zinc-900 flex items-center justify-center p-5 min-h-[80px]">
-              <img src={logoUrl} alt="Logo dark preview"
-                className="max-h-14 max-w-full object-contain"
+            <div className="bg-zinc-900 flex items-center justify-center p-6 min-h-[100px]">
+              <img src={extractedUrl} alt="Logo on dark background"
+                className="max-h-16 max-w-full object-contain"
                 style={{ filter: "invert(1) brightness(2)" }} />
             </div>
           </div>
-          <div className="px-4 py-2 bg-card border-t border-border flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">Left: light theme · Right: dark theme (auto-inverted)</p>
+          <p className="text-center text-xs text-muted-foreground mb-3">
+            Light theme · Dark theme (auto-inverted)
+          </p>
+
+          {/* Action buttons */}
+          <div className="grid grid-cols-2 gap-2 px-4 pb-4">
             <button
               type="button"
-              onClick={() => { onLogoUrl(""); setState("idle"); fileRef.current?.click(); }}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              onClick={handleRetake}
+              className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border bg-background text-sm font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-all"
             >
-              <RotateCcw className="w-3 h-3" /> Retake
+              <RotateCcw className="w-3.5 h-3.5" /> Retake
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all"
+              data-testid="button-save-logo"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> Use this logo
             </button>
           </div>
         </div>
       )}
 
-      {/* Preview for URL-pasted logo */}
-      {logoUrl && state === "idle" && (
-        <div className="grid grid-cols-2 gap-2">
-          <div className="bg-white rounded-xl border border-border flex items-center justify-center p-4 min-h-[72px]">
-            <img src={logoUrl} alt="Logo light" className="max-h-12 max-w-full object-contain" onError={e => (e.currentTarget.style.display = "none")} />
-          </div>
-          <div className="bg-zinc-900 rounded-xl border border-border flex items-center justify-center p-4 min-h-[72px]">
-            <img src={logoUrl} alt="Logo dark" className="max-h-12 max-w-full object-contain"
-              style={{ filter: "invert(1) brightness(2)" }}
-              onError={e => (e.currentTarget.style.display = "none")} />
+      {/* ── Processing spinner ── */}
+      {state === "processing" && (
+        <div className="rounded-xl border border-border bg-card flex flex-col items-center gap-3 py-8">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <div className="text-center">
+            <p className="text-sm font-medium text-foreground">AI is copying your logo…</p>
+            <p className="text-xs text-muted-foreground mt-1">Usually 15–20 seconds</p>
           </div>
         </div>
       )}
 
+      {/* ── Camera trigger button (idle / error states) ── */}
+      {(state === "idle" || state === "error") && (
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 text-muted-foreground hover:text-foreground text-sm font-medium transition-all cursor-pointer"
+          data-testid="button-extract-logo"
+        >
+          <Camera className="w-4 h-4" />
+          <Sparkles className="w-4 h-4" />
+          {state === "error" ? "Retry — photo a flyer, letterhead or shop sign" : "Photo a flyer, letterhead or shop sign — AI strips the logo"}
+        </button>
+      )}
+
+      {/* ── Error with retry ── */}
       {state === "error" && (
-        <p className="text-xs text-destructive flex items-center gap-1">
-          Extraction failed — try again or paste a URL above instead.
-        </p>
+        <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3 flex items-center justify-between gap-3">
+          <p className="text-xs text-destructive">Extraction failed — network may have dropped when camera closed.</p>
+          <button
+            type="button"
+            onClick={handleRetry}
+            className="text-xs font-semibold text-destructive hover:underline shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* ── Saved logo preview (idle with a URL already set) ── */}
+      {state === "idle" && logoUrl && (
+        <div className="rounded-xl border border-border overflow-hidden">
+          <div className="grid grid-cols-2">
+            <div className="bg-white flex items-center justify-center p-4 min-h-[72px]">
+              <img src={logoUrl} alt="Logo light" className="max-h-12 max-w-full object-contain"
+                onError={e => (e.currentTarget.style.display = "none")} />
+            </div>
+            <div className="bg-zinc-900 flex items-center justify-center p-4 min-h-[72px]">
+              <img src={logoUrl} alt="Logo dark" className="max-h-12 max-w-full object-contain"
+                style={{ filter: "invert(1) brightness(2)" }}
+                onError={e => (e.currentTarget.style.display = "none")} />
+            </div>
+          </div>
+          <div className="px-3 py-2 bg-card border-t border-border flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">Saved · Light / Dark preview</p>
+            <button type="button"
+              onClick={() => { onLogoUrl(""); setState("idle"); }}
+              className="text-xs text-muted-foreground hover:text-destructive transition-colors">
+              Remove
+            </button>
+          </div>
+        </div>
       )}
 
       <p className="text-xs text-muted-foreground">
-        AI analyses the photo, recreates the logo as a clean graphic and removes the background automatically.
-        Dark themes will invert the logo to white.
+        AI copies the logo directly from your photo as a clean flat graphic. Background removed automatically.
       </p>
     </div>
   );
