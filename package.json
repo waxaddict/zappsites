@@ -18,3 +18,10 @@
     "prettier": "^3.8.1"
   }
 }
+
+{
+  "scripts": {
+    "build": "tsc -p tsconfig.app.json",
+    "start": "node dist/app.js"
+  }
+}
