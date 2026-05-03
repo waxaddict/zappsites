@@ -5,7 +5,7 @@ import {
   getSearchPlacesQueryKey, getGetPlaceDetailsQueryKey,
 } from "@workspace/api-client-react";
 import { toast } from "sonner";
-import { Zap, Search, MapPin, X, Plus, Trash2, ArrowLeft, Camera, Link, Sparkles, RotateCcw } from "lucide-react";
+import { Zap, Search, MapPin, X, Plus, Trash2, ArrowLeft, Upload, Link, Camera } from "lucide-react";
 
 type SocialLinks = { instagram?: string; facebook?: string; tiktok?: string };
 
@@ -97,260 +97,89 @@ function CameraColourPicker({ onColour }: { onColour: (hex: string) => void }) {
   );
 }
 
-// ── AI Logo Extractor ─────────────────────────────────────────────────────────
-type LogoState = "idle" | "uploading" | "processing" | "review" | "error";
-
-function LogoExtractor({
-  businessName, logoUrl, onLogoUrl,
-}: { businessName: string; logoUrl: string; onLogoUrl: (url: string) => void }) {
+// ── Logo uploader ─────────────────────────────────────────────────────────────
+function LogoUploader({
+  logoUrl, onLogoUrl,
+}: { logoUrl: string; onLogoUrl: (url: string) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [state, setState] = useState<LogoState>("idle");
-  const [errorMsg, setErrorMsg] = useState<string>("");
-  const [extractedUrl, setExtractedUrl] = useState<string>("");
-  const pendingFile = useRef<File | null>(null);
-  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [fileName, setFileName] = useState("");
 
-  function stopPolling() {
-    if (pollTimer.current) { clearTimeout(pollTimer.current); pollTimer.current = null; }
-  }
-
-  async function pollJob(jobId: string) {
-    try {
-      // Poll response is tiny JSON — never contains image data.
-      // When done, logoUrl is either a GCS URL or /api/media/extract-logo/result/:jobId
-      const res = await fetch(`/api/media/extract-logo/status/${jobId}`);
-      if (!res.ok) throw new Error("Job not found");
-      const data = await res.json() as { status: string; logoUrl?: string; error?: string };
-
-      if (data.status === "done" && data.logoUrl) {
-        stopPolling();
-        setExtractedUrl(data.logoUrl);
-        setState("review");
-        return;
-      }
-      if (data.status === "error") {
-        stopPolling();
-        setErrorMsg(data.error ?? "Extraction failed");
-        setState("error");
-        return;
-      }
-      // Still pending — keep polling every 2 seconds
-      pollTimer.current = setTimeout(() => pollJob(jobId), 2000);
-    } catch {
-      // Don't give up on a single failed poll — retry in 3 seconds
-      pollTimer.current = setTimeout(() => pollJob(jobId), 3000);
-    }
-  }
-
-  // Compress photo to ≤1024px JPEG (~100–150KB) before uploading.
-  // Phone cameras produce 4–12MB images which time out on the proxy.
-  function compressPhoto(file: File): Promise<Blob> {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const MAX = 1024;
-        const ratio = Math.min(MAX / img.naturalWidth, MAX / img.naturalHeight, 1);
-        const canvas = document.createElement("canvas");
-        canvas.width  = Math.round(img.naturalWidth  * ratio);
-        canvas.height = Math.round(img.naturalHeight * ratio);
-        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(
-          blob => blob ? resolve(blob) : reject(new Error("Compression failed")),
-          "image/jpeg", 0.85,
-        );
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not read photo")); };
-      img.src = url;
-    });
-  }
-
-  // Read compressed blob as base64 string
-  function blobToBase64(blob: Blob): Promise<string> {
+  function fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        // result is "data:image/jpeg;base64,<data>" — strip the prefix
-        resolve(result.split(",")[1]);
-      };
+      reader.onload = () => resolve((reader.result as string).split(",")[1]);
       reader.onerror = reject;
-      reader.readAsDataURL(blob);
+      reader.readAsDataURL(file);
     });
   }
 
-  async function startExtraction(file: File) {
-    stopPolling();
-    setState("uploading");
-    setErrorMsg("");
-
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setFileName(file.name);
+    setUploading(true);
     try {
-      // Compress to ≤1024px JPEG (~100–150KB) then encode as base64.
-      // Sending JSON avoids multipart/form-data streaming which the proxy drops.
-      const compressed = await compressPhoto(file);
-      const photo = await blobToBase64(compressed);
-
-      const res = await fetch("/api/media/extract-logo", {
+      const photo = await fileToBase64(file);
+      const res = await fetch("/api/media/upload-logo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photo, businessName: businessName || "business" }),
+        body: JSON.stringify({ photo }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? "Upload failed");
       }
-      const { jobId } = await res.json() as { jobId: string };
-      setState("processing");
-      pollTimer.current = setTimeout(() => pollJob(jobId), 2000);
+      const { logoUrl: url } = await res.json() as { logoUrl: string };
+      onLogoUrl(url);
+      toast.success("Logo uploaded successfully");
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Upload failed");
-      setState("error");
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+      setFileName("");
+    } finally {
+      setUploading(false);
     }
-  }
-
-  // Clean up poll on unmount
-  useEffect(() => () => stopPolling(), []);
-
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    pendingFile.current = file;
-    e.target.value = "";
-    await startExtraction(file);
-  }
-
-  function handleSave() {
-    onLogoUrl(extractedUrl);
-    setExtractedUrl("");
-    setState("idle");
-  }
-
-  function handleRetake() {
-    stopPolling();
-    setExtractedUrl("");
-    setState("idle");
-    fileRef.current?.click();
-  }
-
-  function handleRetry() {
-    if (pendingFile.current) startExtraction(pendingFile.current);
   }
 
   return (
     <div className="space-y-3">
-      {/* URL paste field — hidden while reviewing an extraction */}
-      {state !== "review" && (
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <input
-              type="url"
-              value={logoUrl}
-              onChange={e => { onLogoUrl(e.target.value); setState("idle"); }}
-              placeholder="https://example.com/logo.png  (or use camera below)"
-              className="w-full pl-9 pr-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-              data-testid="input-logo-url"
-            />
-          </div>
-        </div>
-      )}
+      {/* URL paste */}
+      <div className="relative">
+        <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+        <input
+          type="url"
+          value={logoUrl}
+          onChange={e => onLogoUrl(e.target.value)}
+          placeholder="Paste a logo URL, or browse below"
+          className="w-full pl-9 pr-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+          data-testid="input-logo-url"
+        />
+      </div>
 
-      {/* Hidden camera input */}
-      <input ref={fileRef} type="file" accept="image/*" capture="environment"
-        onChange={handleFile} className="hidden" aria-label="Take photo to extract logo" />
+      {/* Browse button */}
+      <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
+        onChange={handleFile} className="hidden" />
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        disabled={uploading}
+        className={`w-full flex items-center justify-center gap-2.5 py-3 rounded-xl border-2 border-dashed text-sm font-medium transition-all
+          ${uploading
+            ? "border-primary/30 text-primary/60 bg-primary/5 cursor-wait"
+            : "border-border hover:border-primary/50 hover:bg-primary/5 text-muted-foreground hover:text-foreground cursor-pointer"
+          }`}
+        data-testid="button-browse-logo"
+      >
+        {uploading ? (
+          <><div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" /> Uploading {fileName}…</>
+        ) : (
+          <><Upload className="w-4 h-4" /> Browse files — PNG, JPG, SVG</>
+        )}
+      </button>
 
-      {/* ── Review screen: show extracted logo, Save / Retake ── */}
-      {state === "review" && extractedUrl && (
-        <div className="rounded-2xl border-2 border-primary/30 bg-card overflow-hidden shadow-sm">
-          <div className="px-4 pt-4 pb-2 flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-primary" />
-            <span className="text-sm font-semibold text-foreground">Logo extracted</span>
-            <span className="text-xs text-muted-foreground ml-auto">Review before saving</span>
-          </div>
-
-          {/* Light + dark preview */}
-          <div className="grid grid-cols-2 mx-4 mb-3 rounded-xl overflow-hidden border border-border">
-            <div className="bg-white flex items-center justify-center p-6 min-h-[100px]">
-              <img src={extractedUrl} alt="Logo on light background"
-                className="max-h-16 max-w-full object-contain" />
-            </div>
-            <div className="bg-zinc-900 flex items-center justify-center p-6 min-h-[100px]">
-              <img src={extractedUrl} alt="Logo on dark background"
-                className="max-h-16 max-w-full object-contain"
-                style={{ filter: "invert(1) brightness(2)" }} />
-            </div>
-          </div>
-          <p className="text-center text-xs text-muted-foreground mb-3">
-            Light theme · Dark theme (auto-inverted)
-          </p>
-
-          {/* Action buttons */}
-          <div className="grid grid-cols-2 gap-2 px-4 pb-4">
-            <button
-              type="button"
-              onClick={handleRetake}
-              className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border bg-background text-sm font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-all"
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> Retake
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all"
-              data-testid="button-save-logo"
-            >
-              <Sparkles className="w-3.5 h-3.5" /> Use this logo
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Uploading / Processing spinner ── */}
-      {(state === "uploading" || state === "processing") && (
-        <div className="rounded-xl border border-border bg-card flex flex-col items-center gap-3 py-8">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <div className="text-center">
-            <p className="text-sm font-medium text-foreground">
-              {state === "uploading" ? "Uploading photo…" : "AI is copying your logo…"}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {state === "uploading" ? "Just a moment" : "Usually 15–20 seconds"}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* ── Camera trigger button (idle / error states) ── */}
-      {(state === "idle" || state === "error") && (
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 text-muted-foreground hover:text-foreground text-sm font-medium transition-all cursor-pointer"
-          data-testid="button-extract-logo"
-        >
-          <Camera className="w-4 h-4" />
-          <Sparkles className="w-4 h-4" />
-          {state === "error" ? "Retry — photo a flyer, letterhead or shop sign" : "Photo a flyer, letterhead or shop sign — AI strips the logo"}
-        </button>
-      )}
-
-      {/* ── Error with retry ── */}
-      {state === "error" && (
-        <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3 flex items-center justify-between gap-3">
-          <p className="text-xs text-destructive">Extraction failed — network may have dropped when camera closed.</p>
-          <button
-            type="button"
-            onClick={handleRetry}
-            className="text-xs font-semibold text-destructive hover:underline shrink-0"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      {/* ── Saved logo preview (idle with a URL already set) ── */}
-      {state === "idle" && logoUrl && (
+      {/* Preview */}
+      {logoUrl && !uploading && (
         <div className="rounded-xl border border-border overflow-hidden">
           <div className="grid grid-cols-2">
             <div className="bg-white flex items-center justify-center p-4 min-h-[72px]">
@@ -364,19 +193,14 @@ function LogoExtractor({
             </div>
           </div>
           <div className="px-3 py-2 bg-card border-t border-border flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">Saved · Light / Dark preview</p>
-            <button type="button"
-              onClick={() => { onLogoUrl(""); setState("idle"); }}
+            <p className="text-xs text-muted-foreground">Light / Dark preview</p>
+            <button type="button" onClick={() => { onLogoUrl(""); setFileName(""); }}
               className="text-xs text-muted-foreground hover:text-destructive transition-colors">
               Remove
             </button>
           </div>
         </div>
       )}
-
-      <p className="text-xs text-muted-foreground">
-        AI copies the logo directly from your photo as a clean flat graphic. Background removed automatically.
-      </p>
     </div>
   );
 }
@@ -572,8 +396,7 @@ export default function BuildPage() {
 
           {/* Logo */}
           <Section title="Logo">
-            <LogoExtractor
-              businessName={form.businessName}
+            <LogoUploader
               logoUrl={form.logoUrl}
               onLogoUrl={url => setField("logoUrl", url)}
             />
