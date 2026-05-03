@@ -1,0 +1,73 @@
+I want a website building took that i can build websites on the fly. 
+
+Replit will build me templates/themes. Start with three variations. i will add more later back here. 
+
+these will be 3-5 page sites. super mobile friendly. Modern, with cool movement as pages are scrolled. Design these themes as you would a dedicated prompt “design me a 3 page website, clean, modern, classy, use placeholder text and images. Make the page one url, with links that change the pages within the same url”. 
+
+Then to make the theme into a site I click a template select button. then it takes me to a new page;
+
+Google Place selector dropdown first. 
+Searches, finds, selects, then populates as many of below fields as possible:
+
+Business Name (placeid for the url)(make unique, if a listing for that name is in there then add 3 random numbers after it)
+
+Address
+Opening Hours
+Blurb field. 
+Contact
+Logo *
+Brand Colours **
+Photos***
+Head
+Socials
+Google Map Postcode
+
+
+Then AI (i will set openai api) will create a directory (mysite.co.uk/placeid) where the site can be accessed. And will finish the theme with the data above. 
+
+*The logo will have a function where you can take a photo of a flyer/letterhead/ or even the shop and AI will strip it to vector on a png background to fir the theme. If the theme is dark the logo will be light and vica versa. 
+
+**The brand colours up to three optional. one mandatory will be chosen by using the phones camera to select a colour. showing the hex colour live as you find the brand coloir from flyers or print in store. 
+
+***Then photos are taken
+to replace the placeholders. Or you can upload your own, or provide a URL
+
+The blurb field takes a block of text and then AI takes this and rewords if required, and takes snippets to place where it thinks is best. 
+
+head - needs tohave a section where i can paste code into the head of that placeid page. A script for instance. 
+
+socials will have links, instagram, facebook, tiktok. If these are found in google place id then populate them. Display socials via icons in footer of site. 
+
+google map will be created from the postcode found in the google place id
+
+-
+
+The system will be multi tennant, sites created on the fly using a new placeid with each site having a cms dashboard. mobile like an app, easy to use on phones to control the data or switch themes.
+
+Ill provide Google place api and open ai api. 
+Ill also provide the mailjet api for contact forms sends. 
+
+The idea of this app is for me to wqlk into a place with no website and from my phone be able to build them a site in under 5 minutes. THIS SITE SHOULD NOT REQUIRE AN ACCOUNT TO DESIGN Only I will use the front end UI. It needs to start with the build form page, triggered by the google place id which then finds and populates the form in step one. 
+
+TENNANTS will be able to sign in from their site by clicking an admin link in the footer which is then password protected. 
+
+Store all the tennant data in the database, and images on my google cloud. 
+
+I will register their domain name and then point it towards their place id url but locking their domain in the address bar, even when switching pages so build them as a single url with links changing the content. 
+
+I want to come back in future to add further themes, so make the structure easy for you to add them/plug them in. Ill prompt you here in future to say “design new theme in style xyz”
+
+Finally i need my own master dashboard where i can see all tennants. What plan they are on, date they joined, Assign permision from demo/live/pro. 
+
+(live and pro will be paid and ill use stripe price id’s linked from a go live button in their admin. to take payment then return to the sites thank you page updating their tier automatically. ) 
+
+In their dashboard they will be able to see their account details, previous purchases, billing information. Monthly hosting charges. Cancel button. They will also be able to see the current tier. Starting on the demo, showing expiry date 30 days from date of creation. 
+
+This project should be named ZappWeb
+
+ill use my own neon database. 
+provide sql and ill add it
+
+Ill add secrets, you add the secret names required. 
+
+
