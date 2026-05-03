@@ -141,18 +141,45 @@ function LogoExtractor({
     }
   }
 
+  // Compress photo to ≤1024px JPEG (~100–150KB) before uploading.
+  // Phone cameras produce 4–12MB images which time out on the proxy.
+  function compressPhoto(file: File): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const MAX = 1024;
+        const ratio = Math.min(MAX / img.naturalWidth, MAX / img.naturalHeight, 1);
+        const canvas = document.createElement("canvas");
+        canvas.width  = Math.round(img.naturalWidth  * ratio);
+        canvas.height = Math.round(img.naturalHeight * ratio);
+        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          blob => blob ? resolve(blob) : reject(new Error("Compression failed")),
+          "image/jpeg", 0.85,
+        );
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not read photo")); };
+      img.src = url;
+    });
+  }
+
   async function startExtraction(file: File) {
     stopPolling();
     setState("uploading");
     setErrorMsg("");
 
     try {
+      // Compress first — phone photos are 4–12MB and hit the proxy 10s timeout.
+      // After compression they're ~100–150KB and upload in under a second.
+      const compressed = await compressPhoto(file);
+
       const fd = new FormData();
-      fd.append("photo", file);
+      fd.append("photo", compressed, "photo.jpg");
       fd.append("businessName", businessName || "business");
 
-      // This POST completes in <1 second — just queues the job and returns a jobId.
-      // The heavy OpenAI work happens server-side; we poll for it.
+      // POST returns a jobId immediately; the heavy OpenAI work runs in background.
       const res = await fetch("/api/media/extract-logo", { method: "POST", body: fd });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
