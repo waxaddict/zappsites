@@ -32,6 +32,7 @@ import type {
   SearchPlaces200,
   SearchPlacesParams,
   SetTierBody,
+  SetupTenantBody,
   Site,
   TenantLoginBody,
   TenantRecord,
@@ -1208,6 +1209,92 @@ export const useStripeWebhook = <
   TContext
 > => {
   return useMutation(getStripeWebhookMutationOptions(options));
+};
+
+/**
+ * @summary First-time tenant admin password setup
+ */
+export const getSetupTenantUrl = () => {
+  return `/api/auth/tenant/setup`;
+};
+
+export const setupTenant = async (
+  setupTenantBody: SetupTenantBody,
+  options?: RequestInit,
+): Promise<TenantSession> => {
+  return customFetch<TenantSession>(getSetupTenantUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(setupTenantBody),
+  });
+};
+
+export const getSetupTenantMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setupTenant>>,
+    TError,
+    { data: BodyType<SetupTenantBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setupTenant>>,
+  TError,
+  { data: BodyType<SetupTenantBody> },
+  TContext
+> => {
+  const mutationKey = ["setupTenant"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setupTenant>>,
+    { data: BodyType<SetupTenantBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setupTenant(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetupTenantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setupTenant>>
+>;
+export type SetupTenantMutationBody = BodyType<SetupTenantBody>;
+export type SetupTenantMutationError = ErrorType<unknown>;
+
+/**
+ * @summary First-time tenant admin password setup
+ */
+export const useSetupTenant = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setupTenant>>,
+    TError,
+    { data: BodyType<SetupTenantBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof setupTenant>>,
+  TError,
+  { data: BodyType<SetupTenantBody> },
+  TContext
+> => {
+  return useMutation(getSetupTenantMutationOptions(options));
 };
 
 /**

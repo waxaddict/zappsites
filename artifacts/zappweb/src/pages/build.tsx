@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, useLocation } from "wouter";
-import { useListThemes, useSearchPlaces, useGetPlaceDetails, useCreateSite, getSearchPlacesQueryKey, getGetPlaceDetailsQueryKey } from "@workspace/api-client-react";
+import { useLocation } from "wouter";
+import { useSearchPlaces, useGetPlaceDetails, useCreateSite, getSearchPlacesQueryKey, getGetPlaceDetailsQueryKey } from "@workspace/api-client-react";
 import { toast } from "sonner";
-import { Zap, Search, MapPin, X, Plus, Trash2, ArrowLeft } from "lucide-react";
+import { Zap, Search, MapPin, X, Plus, Trash2, ArrowLeft, Camera } from "lucide-react";
 
 type SocialLinks = { instagram?: string; facebook?: string; tiktok?: string };
 
@@ -17,12 +17,108 @@ interface FormData {
   logoUrl: string;
   brandColors: string[];
   socialLinks: SocialLinks;
-  password: string;
-  confirmPassword: string;
 }
 
+// ── Camera colour picker ──────────────────────────────────────────────────────
+function CameraColourPicker({ onColour }: { onColour: (hex: string) => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [imgSrc, setImgSrc] = useState<string | null>(null);
+  const [imgLoaded, setImgLoaded] = useState(false);
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImgLoaded(false);
+    setImgSrc(URL.createObjectURL(file));
+    // reset so the same file can be re-picked
+    e.target.value = "";
+  }
+
+  useEffect(() => {
+    if (!imgSrc || !canvasRef.current) return;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = canvasRef.current!;
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext("2d")!.drawImage(img, 0, 0);
+      setImgLoaded(true);
+    };
+    img.src = imgSrc;
+  }, [imgSrc]);
+
+  function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas || !imgLoaded) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.floor((e.clientX - rect.left) * scaleX);
+    const y = Math.floor((e.clientY - rect.top) * scaleY);
+    const [r, g, b] = canvas.getContext("2d")!.getImageData(x, y, 1, 1).data;
+    const hex = "#" + [r, g, b].map(v => v.toString(16).padStart(2, "0")).join("");
+    onColour(hex);
+    setImgSrc(null);
+    setImgLoaded(false);
+    toast.success(`Colour sampled: ${hex}`);
+  }
+
+  return (
+    <>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFile}
+        className="hidden"
+        aria-label="Take or choose a photo to sample a colour"
+      />
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        title="Use camera or photo to pick a colour"
+        className="w-10 h-10 flex items-center justify-center rounded-lg border border-border bg-card hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+        data-testid="button-camera-colour"
+      >
+        <Camera className="w-4 h-4" />
+      </button>
+
+      {/* Full-screen colour sampler overlay */}
+      {imgSrc && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 bg-black/80">
+            <p className="text-white text-sm font-medium">Tap any colour to sample it</p>
+            <button
+              type="button"
+              onClick={() => { setImgSrc(null); setImgLoaded(false); }}
+              className="text-white/60 hover:text-white transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-auto flex items-center justify-center p-2">
+            <canvas
+              ref={canvasRef}
+              onClick={handleCanvasClick}
+              className={`max-w-full max-h-full object-contain ${imgLoaded ? "cursor-crosshair" : "opacity-50"}`}
+              style={{ touchAction: "none" }}
+            />
+          </div>
+          {!imgLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Main build form ───────────────────────────────────────────────────────────
 export default function BuildPage() {
-  const { themeId } = useParams<{ themeId: string }>();
   const [, setLocation] = useLocation();
 
   const [placeSearch, setPlaceSearch] = useState("");
@@ -41,13 +137,7 @@ export default function BuildPage() {
     logoUrl: "",
     brandColors: [""],
     socialLinks: {},
-    password: "",
-    confirmPassword: "",
   });
-
-  const { data: themesData } = useListThemes();
-  const themes = (themesData as { themes: Array<{ id: string; name: string; style: string }> } | undefined)?.themes || [];
-  const currentTheme = themes.find(t => t.id === themeId);
 
   const { data: searchResults, isLoading: searching } = useSearchPlaces(
     { q: placeSearch },
@@ -66,8 +156,7 @@ export default function BuildPage() {
     if (placeDetails) {
       const d = placeDetails as {
         name?: string; address?: string; postcode?: string; phone?: string;
-        website?: string; email?: string; openingHours?: string[];
-        socialLinks?: SocialLinks;
+        email?: string; openingHours?: string[]; socialLinks?: SocialLinks;
       };
       setForm(f => ({
         ...f,
@@ -98,12 +187,8 @@ export default function BuildPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (form.password !== form.confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
-    if (!form.businessName || !form.password) {
-      toast.error("Business name and password are required");
+    if (!form.businessName) {
+      toast.error("Business name is required");
       return;
     }
 
@@ -112,23 +197,20 @@ export default function BuildPage() {
         data: {
           placeId: selectedPlaceId || undefined,
           businessName: form.businessName,
-          themeId: themeId || "luminary",
+          themeId: "luminary",
           address: form.address,
           postcode: form.postcode,
           phone: form.phone,
           email: form.email,
-          website: "",
           blurb: form.blurb,
           openingHours: form.openingHours.filter(Boolean),
           brandColors: form.brandColors.filter(Boolean),
           socialLinks: form.socialLinks,
-          password: form.password,
         },
       });
-
       const s = site as { slug: string };
-      toast.success("Site created!");
-      setLocation(`/s/${s.slug}/preview`);
+      toast.success("Site created — now pick a theme!");
+      setLocation(`/s/${s.slug}/themes`);
     } catch {
       toast.error("Failed to create site. Please try again.");
     }
@@ -136,7 +218,6 @@ export default function BuildPage() {
 
   return (
     <div className="min-h-screen bg-background pb-20">
-      {/* Header */}
       <header className="border-b border-border/50 sticky top-0 z-10 backdrop-blur-sm bg-background/80">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center gap-3">
           <button onClick={() => setLocation("/")} className="text-muted-foreground hover:text-foreground transition-colors" data-testid="button-back">
@@ -146,17 +227,16 @@ export default function BuildPage() {
             <div className="w-6 h-6 rounded bg-primary flex items-center justify-center">
               <Zap className="w-3.5 h-3.5 text-white" />
             </div>
-            <span className="font-semibold text-sm">
-              {currentTheme ? `${currentTheme.name} Theme` : "Building"}
-            </span>
+            <span className="font-semibold text-sm">Business details</span>
           </div>
+          <span className="text-xs text-muted-foreground">Step 1 of 2</span>
         </div>
       </header>
 
       <div className="max-w-2xl mx-auto px-4 pt-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold tracking-tight">Build a site</h1>
-          <p className="text-muted-foreground text-sm mt-1">Search the business to auto-fill, then review and submit.</p>
+          <h1 className="text-2xl font-bold tracking-tight">Tell us about the business</h1>
+          <p className="text-muted-foreground text-sm mt-1">Search Google Places to auto-fill, or type it all in manually.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -207,14 +287,14 @@ export default function BuildPage() {
               <p className="text-xs text-primary mt-1 flex items-center gap-1">
                 <MapPin className="w-3 h-3" />
                 Place selected — fields auto-filled below
-                {loadingDetails && " (loading details...)"}
+                {loadingDetails && " (loading...)"}
               </p>
             )}
           </div>
 
           {/* Business Info */}
           <Section title="Business Info">
-            <Field label="Business Name *" required>
+            <Field label="Business Name *">
               <input
                 type="text"
                 value={form.businessName}
@@ -253,7 +333,7 @@ export default function BuildPage() {
                     setField("openingHours", hrs);
                   }}
                   className="input-field flex-1"
-                  placeholder="Monday: 9am - 5pm"
+                  placeholder="Monday: 9am – 5pm"
                   data-testid={`input-hours-${i}`}
                 />
                 <button type="button" onClick={() => setField("openingHours", form.openingHours.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive">
@@ -271,9 +351,9 @@ export default function BuildPage() {
             </button>
           </Section>
 
-          {/* Blurb */}
+          {/* Business Description */}
           <Section title="Business Description">
-            <p className="text-xs text-muted-foreground mb-2">Paste any text — AI will rewrite and place it perfectly.</p>
+            <p className="text-xs text-muted-foreground mb-2">Paste any text — AI will rewrite and place it perfectly on the next step.</p>
             <textarea
               value={form.blurb}
               onChange={e => setField("blurb", e.target.value)}
@@ -286,7 +366,9 @@ export default function BuildPage() {
 
           {/* Brand Colours */}
           <Section title="Brand Colours">
-            <p className="text-xs text-muted-foreground mb-2">Up to 3 colours. Use your phone camera to match brand colours from print.</p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Add up to 3 brand colours. Use the <Camera className="w-3 h-3 inline" /> button to take a photo and tap any colour in it.
+            </p>
             <div className="space-y-2">
               {form.brandColors.map((c, i) => (
                 <div key={i} className="flex items-center gap-2">
@@ -298,7 +380,7 @@ export default function BuildPage() {
                       cols[i] = e.target.value;
                       setField("brandColors", cols);
                     }}
-                    className="w-10 h-10 rounded cursor-pointer border-0 bg-transparent p-0"
+                    className="w-10 h-10 rounded-lg cursor-pointer border border-border bg-transparent p-0.5"
                     data-testid={`input-color-${i}`}
                   />
                   <input
@@ -312,6 +394,13 @@ export default function BuildPage() {
                     placeholder="#000000"
                     className="input-field flex-1 font-mono text-sm"
                   />
+                  <CameraColourPicker
+                    onColour={hex => {
+                      const cols = [...form.brandColors];
+                      cols[i] = hex;
+                      setField("brandColors", cols);
+                    }}
+                  />
                   {i > 0 && (
                     <button type="button" onClick={() => setField("brandColors", form.brandColors.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive">
                       <Trash2 className="w-4 h-4" />
@@ -320,7 +409,12 @@ export default function BuildPage() {
                 </div>
               ))}
               {form.brandColors.length < 3 && (
-                <button type="button" onClick={() => setField("brandColors", [...form.brandColors, ""])} className="text-xs text-primary flex items-center gap-1 hover:underline" data-testid="button-add-color">
+                <button
+                  type="button"
+                  onClick={() => setField("brandColors", [...form.brandColors, ""])}
+                  className="text-xs text-primary flex items-center gap-1 hover:underline"
+                  data-testid="button-add-color"
+                >
                   <Plus className="w-3 h-3" /> Add colour
                 </button>
               )}
@@ -343,33 +437,6 @@ export default function BuildPage() {
             ))}
           </Section>
 
-          {/* Password */}
-          <Section title="Tenant Admin Password">
-            <p className="text-xs text-muted-foreground mb-2">The business owner uses this to access their CMS dashboard.</p>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Password *" required>
-                <input
-                  type="password"
-                  value={form.password}
-                  onChange={e => setField("password", e.target.value)}
-                  required
-                  className="input-field"
-                  data-testid="input-password"
-                />
-              </Field>
-              <Field label="Confirm Password *" required>
-                <input
-                  type="password"
-                  value={form.confirmPassword}
-                  onChange={e => setField("confirmPassword", e.target.value)}
-                  required
-                  className="input-field"
-                  data-testid="input-confirm-password"
-                />
-              </Field>
-            </div>
-          </Section>
-
           <button
             type="submit"
             disabled={createSite.isPending}
@@ -379,12 +446,12 @@ export default function BuildPage() {
             {createSite.isPending ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Building...
+                Creating...
               </>
             ) : (
               <>
                 <Zap className="w-4 h-4" />
-                Build Site
+                Next — choose theme
               </>
             )}
           </button>
@@ -403,12 +470,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Field({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-muted-foreground mb-1">
-        {label}{required && <span className="text-primary ml-0.5">*</span>}
-      </label>
+      <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
       {children}
     </div>
   );

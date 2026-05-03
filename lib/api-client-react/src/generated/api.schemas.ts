@@ -117,7 +117,7 @@ export interface PublicSite {
 export interface CreateSiteBody {
   placeId?: string;
   businessName: string;
-  themeId: string;
+  themeId?: string;
   address?: string;
   postcode?: string;
   phone?: string;
@@ -129,7 +129,7 @@ export interface CreateSiteBody {
   socialLinks?: SocialLinks;
   lat?: number;
   lng?: number;
-  password: string;
+  password?: string;
 }
 
 export interface UpdateSiteBody {
@@ -182,6 +182,12 @@ export interface TenantSession {
   businessName?: string;
   tier?: string;
   authenticated: boolean;
+  needsSetup?: boolean;
+}
+
+export interface SetupTenantBody {
+  slug: string;
+  password: string;
 }
 
 export type TenantRecordTier =

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useTenantLogin } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,19 +10,47 @@ export default function TenantLoginPage() {
   const { slug } = useParams<{ slug: string }>();
   const [, setLocation] = useLocation();
   const [password, setPassword] = useState("");
+  const [checking, setChecking] = useState(true);
   const login = useTenantLogin();
   const qc = useQueryClient();
+
+  // On load: check if credentials are set — if not, skip to setup
+  useEffect(() => {
+    fetch(`/api/auth/tenant/check?slug=${encodeURIComponent(slug)}`)
+      .then(r => r.json())
+      .then((d: { needsSetup?: boolean }) => {
+        if (d.needsSetup) {
+          setLocation(`/s/${slug}/setup`);
+        } else {
+          setChecking(false);
+        }
+      })
+      .catch(() => setChecking(false));
+  }, [slug, setLocation]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await login.mutateAsync({ data: { slug, password } });
+      const result = await login.mutateAsync({ data: { slug, password } });
+      const r = result as { authenticated: boolean; needsSetup?: boolean };
+      if (r.needsSetup) {
+        setLocation(`/s/${slug}/setup`);
+        return;
+      }
       await qc.invalidateQueries({ queryKey: getGetTenantSessionQueryKey() });
       toast.success("Logged in");
       setLocation(`/s/${slug}/admin`);
     } catch {
       toast.error("Invalid password");
     }
+  }
+
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
 
   return (
@@ -57,7 +85,9 @@ export default function TenantLoginPage() {
             className="w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
             data-testid="button-tenant-login"
           >
-            {login.isPending ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : "Sign In"}
+            {login.isPending
+              ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              : "Sign In"}
           </button>
         </form>
 

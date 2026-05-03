@@ -130,7 +130,7 @@ export const ListSitesResponse = zod.object({
 export const CreateSiteBody = zod.object({
   placeId: zod.string().optional(),
   businessName: zod.string(),
-  themeId: zod.string(),
+  themeId: zod.string().optional(),
   address: zod.string().optional(),
   postcode: zod.string().optional(),
   phone: zod.string().optional(),
@@ -149,7 +149,7 @@ export const CreateSiteBody = zod.object({
     .optional(),
   lat: zod.number().optional(),
   lng: zod.number().optional(),
-  password: zod.string(),
+  password: zod.string().optional(),
 });
 
 /**
@@ -403,6 +403,22 @@ export const StripeWebhookResponse = zod.object({
 });
 
 /**
+ * @summary First-time tenant admin password setup
+ */
+export const SetupTenantBody = zod.object({
+  slug: zod.string(),
+  password: zod.string(),
+});
+
+export const SetupTenantResponse = zod.object({
+  slug: zod.string().optional(),
+  businessName: zod.string().optional(),
+  tier: zod.string().optional(),
+  authenticated: zod.boolean(),
+  needsSetup: zod.boolean().optional(),
+});
+
+/**
  * @summary Tenant admin login
  */
 export const TenantLoginBody = zod.object({
@@ -415,6 +431,7 @@ export const TenantLoginResponse = zod.object({
   businessName: zod.string().optional(),
   tier: zod.string().optional(),
   authenticated: zod.boolean(),
+  needsSetup: zod.boolean().optional(),
 });
 
 /**
@@ -432,6 +449,7 @@ export const GetTenantSessionResponse = zod.object({
   businessName: zod.string().optional(),
   tier: zod.string().optional(),
   authenticated: zod.boolean(),
+  needsSetup: zod.boolean().optional(),
 });
 
 /**

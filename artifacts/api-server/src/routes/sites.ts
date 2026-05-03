@@ -63,7 +63,7 @@ router.post("/", async (req, res) => {
   try {
     const baseSlug = slugify(businessName);
     const slug = await uniqueSlug(baseSlug);
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = password ? await bcrypt.hash(password, 10) : null;
     const demoExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     const [site] = await db.insert(sitesTable).values({

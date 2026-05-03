@@ -33,7 +33,7 @@ export const sitesTable = pgTable("sites", {
   demoExpiresAt: timestamp("demo_expires_at"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
