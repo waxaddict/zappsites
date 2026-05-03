@@ -98,64 +98,84 @@ function CameraColourPicker({ onColour }: { onColour: (hex: string) => void }) {
 }
 
 // ── AI Logo Extractor ─────────────────────────────────────────────────────────
-type LogoState = "idle" | "processing" | "review" | "error";
+type LogoState = "idle" | "uploading" | "processing" | "review" | "error";
 
 function LogoExtractor({
   businessName, logoUrl, onLogoUrl,
 }: { businessName: string; logoUrl: string; onLogoUrl: (url: string) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<LogoState>("idle");
-  // Pending file kept for retry if network drops
-  const pendingFile = useRef<File | null>(null);
-  // Extracted result waiting for user to approve
+  const [errorMsg, setErrorMsg] = useState<string>("");
   const [extractedUrl, setExtractedUrl] = useState<string>("");
+  const pendingFile = useRef<File | null>(null);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  async function runExtraction(file: File) {
-    setState("processing");
+  function stopPolling() {
+    if (pollTimer.current) { clearTimeout(pollTimer.current); pollTimer.current = null; }
+  }
 
-    // Mobile browsers (especially iOS) briefly suspend network when the camera
-    // app closes. A short delay lets the browser fully resurface before we send.
-    await new Promise(r => setTimeout(r, 350));
+  async function pollJob(jobId: string) {
+    try {
+      const res = await fetch(`/api/media/extract-logo/status/${jobId}`);
+      if (!res.ok) throw new Error("Job not found");
+      const data = await res.json() as { status: string; logoUrl?: string; error?: string };
 
-    let lastErr: Error = new Error("Extraction failed");
-
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt > 0) {
-        toast.info(`Connection dropped — retrying (${attempt + 1}/3)…`);
-        await new Promise(r => setTimeout(r, 1200 * attempt));
-      }
-      try {
-        // Fresh FormData each attempt — same File object is fine to re-use
-        const fd = new FormData();
-        fd.append("photo", file);
-        fd.append("businessName", businessName || "business");
-
-        const res = await fetch("/api/media/extract-logo", { method: "POST", body: fd });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error((body as { error?: string }).error || "Extraction failed");
-        }
-        const data = await res.json() as { logoUrl: string };
+      if (data.status === "done" && data.logoUrl) {
+        stopPolling();
         setExtractedUrl(data.logoUrl);
         setState("review");
         return;
-      } catch (err) {
-        lastErr = err instanceof Error ? err : new Error("Network error");
-        // Only retry on network errors, not server errors
-        if (lastErr.message !== "Network error" && lastErr.message !== "Failed to fetch") break;
       }
+      if (data.status === "error") {
+        stopPolling();
+        setErrorMsg(data.error ?? "Extraction failed");
+        setState("error");
+        return;
+      }
+      // Still pending — poll again in 2 seconds
+      pollTimer.current = setTimeout(() => pollJob(jobId), 2000);
+    } catch {
+      stopPolling();
+      setErrorMsg("Lost connection while waiting — please retry.");
+      setState("error");
     }
-
-    setState("error");
-    toast.error(lastErr.message);
   }
+
+  async function startExtraction(file: File) {
+    stopPolling();
+    setState("uploading");
+    setErrorMsg("");
+
+    try {
+      const fd = new FormData();
+      fd.append("photo", file);
+      fd.append("businessName", businessName || "business");
+
+      // This POST completes in <1 second — just queues the job and returns a jobId.
+      // The heavy OpenAI work happens server-side; we poll for it.
+      const res = await fetch("/api/media/extract-logo", { method: "POST", body: fd });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? "Upload failed");
+      }
+      const { jobId } = await res.json() as { jobId: string };
+      setState("processing");
+      pollTimer.current = setTimeout(() => pollJob(jobId), 2000);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Upload failed");
+      setState("error");
+    }
+  }
+
+  // Clean up poll on unmount
+  useEffect(() => () => stopPolling(), []);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     pendingFile.current = file;
     e.target.value = "";
-    await runExtraction(file);
+    await startExtraction(file);
   }
 
   function handleSave() {
@@ -165,13 +185,14 @@ function LogoExtractor({
   }
 
   function handleRetake() {
+    stopPolling();
     setExtractedUrl("");
     setState("idle");
     fileRef.current?.click();
   }
 
   function handleRetry() {
-    if (pendingFile.current) runExtraction(pendingFile.current);
+    if (pendingFile.current) startExtraction(pendingFile.current);
   }
 
   return (
@@ -243,13 +264,17 @@ function LogoExtractor({
         </div>
       )}
 
-      {/* ── Processing spinner ── */}
-      {state === "processing" && (
+      {/* ── Uploading / Processing spinner ── */}
+      {(state === "uploading" || state === "processing") && (
         <div className="rounded-xl border border-border bg-card flex flex-col items-center gap-3 py-8">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           <div className="text-center">
-            <p className="text-sm font-medium text-foreground">AI is copying your logo…</p>
-            <p className="text-xs text-muted-foreground mt-1">Usually 15–20 seconds</p>
+            <p className="text-sm font-medium text-foreground">
+              {state === "uploading" ? "Uploading photo…" : "AI is copying your logo…"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {state === "uploading" ? "Just a moment" : "Usually 15–20 seconds"}
+            </p>
           </div>
         </div>
       )}
