@@ -1,16 +1,15 @@
 import express, { type Express } from "express";
 import cors from "cors";
-import pinoHttp = require("pino-http");
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { pool } from "@workspace/db";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
+import { requestLogger } from "./lib/request-logger.js";
 
 const app: Express = express();
 
-// HTTP logger
-app.use(pinoHttp({ logger }));
+app.use(requestLogger);
 
 app.use(cors({ origin: true, credentials: true }));
 

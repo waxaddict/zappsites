@@ -1,13 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "module": "ESNext",
-    "target": "ES2020",
-    "moduleResolution": "Node",
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": ["node"],
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "skipLibCheck": true,
-    "strict": false
+    "allowSyntheticDefaultImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "references": [
+    { "path": "../../lib/db" },
+    { "path": "../../lib/api-zod" }
+  ]
 }
