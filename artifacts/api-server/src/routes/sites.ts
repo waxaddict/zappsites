@@ -81,11 +81,13 @@ router.post("/", async (req, res) => {
       website: data.website,
       blurb: data.blurb,
       openingHours: data.openingHours || [],
+      photos: data.photos || [],
       brandColors: data.brandColors || [],
       socialLinks: data.socialLinks || {},
       lat: data.lat,
       lng: data.lng,
       logoUrl: data.logoUrl,
+      aiBlurb: data.aiBlurb,
     }).returning();
 
     return res.status(201).json(siteToResponse(site));

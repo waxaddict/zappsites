@@ -679,6 +679,14 @@ components:
           type: string
         logoUrl:
           type: string
+        photos:
+          type: array
+          items:
+            type: string
+        aiBlurb:
+          type: string
+        isActive:
+          type: boolean
       required: [businessName]
 
     UpdateSiteBody:

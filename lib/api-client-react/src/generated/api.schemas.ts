@@ -131,6 +131,9 @@ export interface CreateSiteBody {
   lng?: number;
   password?: string;
   logoUrl?: string;
+  photos?: string[];
+  aiBlurb?: string;
+  isActive?: boolean;
 }
 
 export interface UpdateSiteBody {

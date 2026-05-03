@@ -151,6 +151,9 @@ export const CreateSiteBody = zod.object({
   lng: zod.number().optional(),
   password: zod.string().optional(),
   logoUrl: zod.string().optional(),
+  photos: zod.array(zod.string()).optional(),
+  aiBlurb: zod.string().optional(),
+  isActive: zod.boolean().optional(),
 });
 
 /**
