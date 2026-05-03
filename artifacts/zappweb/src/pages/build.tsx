@@ -165,22 +165,36 @@ function LogoExtractor({
     });
   }
 
+  // Read compressed blob as base64 string
+  function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // result is "data:image/jpeg;base64,<data>" — strip the prefix
+        resolve(result.split(",")[1]);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
   async function startExtraction(file: File) {
     stopPolling();
     setState("uploading");
     setErrorMsg("");
 
     try {
-      // Compress first — phone photos are 4–12MB and hit the proxy 10s timeout.
-      // After compression they're ~100–150KB and upload in under a second.
+      // Compress to ≤1024px JPEG (~100–150KB) then encode as base64.
+      // Sending JSON avoids multipart/form-data streaming which the proxy drops.
       const compressed = await compressPhoto(file);
+      const photo = await blobToBase64(compressed);
 
-      const fd = new FormData();
-      fd.append("photo", compressed, "photo.jpg");
-      fd.append("businessName", businessName || "business");
-
-      // POST returns a jobId immediately; the heavy OpenAI work runs in background.
-      const res = await fetch("/api/media/extract-logo", { method: "POST", body: fd });
+      const res = await fetch("/api/media/extract-logo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo, businessName: businessName || "business" }),
+      });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? "Upload failed");

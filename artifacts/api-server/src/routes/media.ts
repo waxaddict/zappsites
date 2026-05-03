@@ -1,5 +1,4 @@
 import { Router } from "express";
-import multer from "multer";
 import OpenAI, { toFile } from "openai";
 import sharp from "sharp";
 import { Storage } from "@google-cloud/storage";
@@ -7,7 +6,6 @@ import { randomUUID } from "crypto";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
 
 // ── In-memory job store ──────────────────────────────────────────────────────
 // Jobs are cleaned up after 15 minutes so memory doesn't grow unbounded.
@@ -69,6 +67,14 @@ async function prepareInputImage(buffer: Buffer): Promise<Buffer> {
     .resize(1024, 1024, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 1 } })
     .png()
     .toBuffer();
+}
+
+function parsePhotoBuffer(body: unknown): Buffer {
+  const b = body as Record<string, unknown>;
+  if (typeof b.photo !== "string" || !b.photo) throw new Error("Missing photo field");
+  // Accept raw base64 or data URL (data:image/...;base64,<data>)
+  const raw = b.photo.includes(",") ? b.photo.split(",")[1] : b.photo;
+  return Buffer.from(raw, "base64");
 }
 
 // ── Background extraction worker ─────────────────────────────────────────────
@@ -148,22 +154,27 @@ async function runExtraction(jobId: string, fileBuffer: Buffer, businessName: st
 }
 
 // ── POST /media/extract-logo ─────────────────────────────────────────────────
-// Accepts the photo, immediately returns a jobId, runs extraction in background.
-// The long OpenAI call is fully decoupled from the HTTP response.
-router.post("/extract-logo", upload.single("photo"), (req, res) => {
+// Accepts { photo: "<base64>", businessName: string } as JSON.
+// Returns { jobId } immediately — extraction runs in background.
+// Using JSON avoids multipart/form-data streaming which the dev proxy drops.
+router.post("/extract-logo", (req, res) => {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return res.status(503).json({ error: "OpenAI not configured" });
 
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: "No photo uploaded" });
+  let fileBuffer: Buffer;
+  try {
+    fileBuffer = parsePhotoBuffer(req.body);
+  } catch {
+    return res.status(400).json({ error: "No photo provided" });
+  }
 
-  const businessName = (req.body.businessName as string) || "the business";
+  const businessName = (req.body as Record<string, unknown>).businessName as string || "the business";
   const jobId = randomUUID();
 
   jobs.set(jobId, { status: "pending" });
 
   // Fire and forget — client will poll for the result
-  runExtraction(jobId, file.buffer, businessName, apiKey);
+  runExtraction(jobId, fileBuffer, businessName, apiKey);
 
   req.log.info({ jobId }, "logo-extract: job queued");
   return res.json({ jobId });
