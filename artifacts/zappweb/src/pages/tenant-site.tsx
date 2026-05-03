@@ -473,13 +473,6 @@ function UnifiedTheme({ site, mode }: { site: PublicSite; mode: ThemeMode }) {
               return item.href ? <a key={i} href={item.href}>{inner}</a> : inner;
             })}
 
-            {site.postcode && (
-              <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${palette.border}` }}>
-                <iframe
-                  src={`https://maps.google.com/maps?q=${encodeURIComponent(site.postcode)}&output=embed`}
-                  className="w-full h-44 border-0" loading="lazy" title="Location" />
-              </div>
-            )}
           </div>
         </div>
       </section>
@@ -565,6 +558,19 @@ function UnifiedTheme({ site, mode }: { site: PublicSite; mode: ThemeMode }) {
               })}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── MAP ─────────────────────────────────────────────────────────────── */}
+      {(site.postcode || site.address) && (
+        <div className="w-full overflow-hidden" style={{ height: 340, borderTop: `1px solid ${palette.border}`, borderBottom: `1px solid ${palette.border}` }}>
+          <iframe
+            src={`https://maps.google.com/maps?q=${encodeURIComponent(site.address || site.postcode || "")}&output=embed`}
+            className="w-full h-full border-0"
+            loading="lazy"
+            title="Find us"
+            allowFullScreen
+          />
         </div>
       )}
 
