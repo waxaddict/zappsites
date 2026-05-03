@@ -98,14 +98,14 @@ Return ONLY a valid JSON object — no markdown, no explanation:
   "businessName": "exact business name as shown, or null",
   "tagline": "primary tagline or slogan verbatim, or null",
   "blurb": "2-3 sentences of website copy in first person (We...) matching the brand voice — include story, what they do, what makes them special",
-  "brandColors": ["#hexcode1", "#hexcode2"],
+  "brandColors": ["#hexcode1", "#hexcode2", "#hexcode3", "#hexcode4"],
   "fontPairId": "one of the IDs below",
   "tone": "one brief phrase describing brand personality",
   "fontStyle": "brief typography description"
 }
 
 Critical rules:
-- brandColors: 2–3 most prominent colours as PRECISE hex codes. Look at backgrounds, bold text, graphic elements. Be accurate.
+- brandColors: return 3–5 most prominent colours as PRECISE hex codes. Include the dominant background, text, accent, and any distinct logo colours. Be accurate and do not collapse similar-but-distinct shades.
 - fontPairId: choose ONE of these that best matches the brand's typography and personality:
 ${fontPairList}
 - blurb: write as the business ("We began on a kitchen table..."), capturing their actual voice.
@@ -122,104 +122,11 @@ ${fontPairList}
       return res.status(500).json({ error: "AI could not read the materials. Try a clearer photo." });
     }
     const result = JSON.parse(jsonMatch[0]);
-    req.log.info({ businessName: result.businessName, fontPairId: result.fontPairId }, "analyse-brand: done");
+    req.log.info({ businessName: result.businessName, fontPairId: result.fontPairId, brandColors: result.brandColors }, "analyse-brand: done");
     return res.json(result);
   } catch (err) {
     req.log.error({ err }, "analyse-brand: failed");
     return res.status(500).json({ error: "Brand analysis failed. Please check the OpenAI API key." });
-  }
-});
-
-// ── POST /media/extract-logo ──────────────────────────────────────────────────
-// Body: { image: string }  — base64 or data-URL of a single marketing material
-// GPT-4o finds the logo region → sharp crops it → uploads to GCS
-router.post("/extract-logo", async (req, res) => {
-  const { image } = req.body as { image?: string };
-  if (!image) return res.status(400).json({ error: "No image provided" });
-
-  try {
-    const openai = getOpenAI();
-
-    // Ask GPT-4o to find the logo bounding box
-    const detection = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [{
-        role: "user",
-        content: [
-          {
-            type: "image_url",
-            image_url: {
-              url: image.startsWith("data:") ? image : `data:image/jpeg;base64,${image}`,
-              detail: "high",
-            },
-          },
-          {
-            type: "text",
-            text: `Look at this marketing material. Identify the main logo, brand mark, badge, or icon — NOT the large display text headline.
-
-Return ONLY valid JSON (no markdown):
-{ "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0 }
-
-Where x, y, w, h are fractions of the image dimensions (0.0 to 1.0):
-- x, y = top-left corner of the logo
-- w, h = width and height of the logo region
-
-If there is no distinct logo/icon visible (only text), return: { "x": null, "y": null, "w": null, "h": null }
-
-Be generous with the crop — include some padding around the logo.`,
-          },
-        ],
-      }],
-      max_tokens: 100,
-    });
-
-    const rawDetection = detection.choices[0]?.message?.content || "";
-    const cropJson = rawDetection.match(/\{[\s\S]*\}/);
-    if (!cropJson) return res.status(422).json({ error: "Could not locate a logo in this image." });
-
-    const crop = JSON.parse(cropJson[0]) as { x: number | null; y: number | null; w: number | null; h: number | null };
-    if (crop.x === null || crop.y === null || crop.w === null || crop.h === null) {
-      return res.status(422).json({ error: "No distinct logo found in this image. Try uploading a closer photo of the logo." });
-    }
-
-    // Decode the image and get dimensions
-    const raw = image.includes(",") ? image.split(",")[1] : image;
-    const inputBuffer = Buffer.from(raw, "base64");
-    const meta = await sharp(inputBuffer).metadata();
-    const iw = meta.width ?? 1000;
-    const ih = meta.height ?? 1000;
-
-    // Crop with a little padding (5% each side)
-    const pad = 0.03;
-    const cx = Math.max(0, (crop.x - pad) * iw);
-    const cy = Math.max(0, (crop.y - pad) * ih);
-    const cw = Math.min(iw - cx, (crop.w + pad * 2) * iw);
-    const ch = Math.min(ih - cy, (crop.h + pad * 2) * ih);
-
-    const cropped = await sharp(inputBuffer)
-      .extract({
-        left: Math.round(cx),
-        top: Math.round(cy),
-        width: Math.round(cw),
-        height: Math.round(ch),
-      })
-      .resize(400, 400, { fit: "inside", withoutEnlargement: true })
-      .png()
-      .toBuffer();
-
-    const filename = `logos/extracted-${Date.now()}.png`;
-    let logoUrl: string;
-    try {
-      logoUrl = await uploadToGcs(cropped, filename, "image/png");
-    } catch {
-      logoUrl = `data:image/png;base64,${cropped.toString("base64")}`;
-    }
-
-    req.log.info({ logoUrl }, "extract-logo: done");
-    return res.json({ logoUrl });
-  } catch (err) {
-    req.log.error({ err }, "extract-logo: failed");
-    return res.status(500).json({ error: "Logo extraction failed. Try a closer, clearer photo of the logo." });
   }
 });
 

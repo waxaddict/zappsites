@@ -233,23 +233,17 @@ function BrandAnalyser({
   onApplyColors,
   onApplyName,
   onApplyFontPair,
-  onApplyLogo,
 }: {
   onApplyBlurb: (blurb: string) => void;
   onApplyColors: (colors: string[]) => void;
   onApplyName: (name: string) => void;
   onApplyFontPair: (id: string) => void;
-  onApplyLogo: (url: string) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [images, setImages] = useState<{ url: string; name: string }[]>([]);
   const [state, setState] = useState<AnalyserState>("idle");
   const [result, setResult] = useState<BrandResult | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
-  const [logoState, setLogoState] = useState<"idle" | "extracting" | "done" | "error">("idle");
-  const [extractedLogoUrl, setExtractedLogoUrl] = useState<string | null>(null);
-  const [logoError, setLogoError] = useState("");
-
   function readFileAsDataUrl(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -286,42 +280,14 @@ function BrandAnalyser({
       const data = await res.json() as BrandResult;
       setResult(data);
       setState("done");
-      // Auto-apply all results immediately — no button clicks needed
       if (data.brandColors?.length) onApplyColors(data.brandColors.filter(Boolean));
       if (data.businessName) onApplyName(data.businessName);
       if (data.blurb) onApplyBlurb(data.blurb);
       if (data.fontPairId) onApplyFontPair(data.fontPairId);
       toast.success("Brand applied to form");
-      // Auto-extract logo from the first image
-      if (images.length > 0) extractLogo(images[0].url);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Analysis failed");
       setState("error");
-    }
-  }
-
-  async function extractLogo(imageUrl: string) {
-    setLogoState("extracting");
-    setExtractedLogoUrl(null);
-    setLogoError("");
-    try {
-      const res = await fetch("/api/media/extract-logo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: imageUrl }),
-      });
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(b.error ?? "Extraction failed");
-      }
-      const { logoUrl } = await res.json() as { logoUrl: string };
-      setExtractedLogoUrl(logoUrl);
-      setLogoState("done");
-      onApplyLogo(logoUrl);
-      toast.success("Logo applied");
-    } catch (err) {
-      setLogoError(err instanceof Error ? err.message : "Extraction failed");
-      setLogoState("error");
     }
   }
 
@@ -335,9 +301,6 @@ function BrandAnalyser({
     setState("idle");
     setResult(null);
     setErrorMsg("");
-    setLogoState("idle");
-    setExtractedLogoUrl(null);
-    setLogoError("");
   }
 
   return (
@@ -453,26 +416,6 @@ function BrandAnalyser({
                 </div>
               )}
 
-              {/* Logo extraction status */}
-              {logoState === "extracting" && (
-                <div className="flex items-center gap-2 text-[10px] text-purple-400">
-                  <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin shrink-0" />
-                  Extracting logo…
-                </div>
-              )}
-              {logoState === "done" && extractedLogoUrl && (
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-muted-foreground w-14 shrink-0">Logo</span>
-                  <img src={extractedLogoUrl} alt="Logo" className="w-8 h-8 object-contain rounded-md border border-border bg-white/5 p-0.5" />
-                  <span className="text-[10px] text-green-400">Applied ✓</span>
-                </div>
-              )}
-              {logoState === "error" && (
-                <div className="flex gap-2">
-                  <span className="text-[10px] text-muted-foreground w-14 shrink-0">Logo</span>
-                  <span className="text-[10px] text-destructive">{logoError}</span>
-                </div>
-              )}
             </div>
 
             {result.tagline && (
@@ -738,7 +681,6 @@ export default function BuildPage() {
             onApplyColors={colors => setField("brandColors", colors.length ? colors : [""])}
             onApplyName={name => setField("businessName", name)}
             onApplyFontPair={id => setField("fontPair", id)}
-            onApplyLogo={url => setField("logoUrl", url)}
           />
 
           {/* Business Info */}
