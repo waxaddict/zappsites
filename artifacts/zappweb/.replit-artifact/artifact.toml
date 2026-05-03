@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "ZappWeb Builder"
+version = "1.0.0"
+id = "artifacts/zappweb"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22817
+
+[services.development]
+run = "pnpm --filter @workspace/zappweb run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/zappweb", "run", "build" ]
+publicDir = "artifacts/zappweb/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22817"
+BASE_PATH = "/"

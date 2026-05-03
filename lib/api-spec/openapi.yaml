@@ -1,22 +1,37 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: ZappWeb API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: places
+    description: Google Places search
+  - name: themes
+    description: Theme management
+  - name: sites
+    description: Site/tenant management
+  - name: admin
+    description: Master admin operations
+  - name: auth
+    description: Tenant authentication
+  - name: media
+    description: Media upload and processing
+  - name: ai
+    description: AI content generation
+  - name: billing
+    description: Stripe billing
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +39,372 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /places/search:
+    get:
+      operationId: searchPlaces
+      tags: [places]
+      summary: Search Google Places by text query
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of matching places
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PlaceResult"
+                required: [results]
+
+  /places/{placeId}:
+    get:
+      operationId: getPlaceDetails
+      tags: [places]
+      summary: Get full details for a Google Place
+      parameters:
+        - name: placeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Place details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaceDetails"
+
+  /themes:
+    get:
+      operationId: listThemes
+      tags: [themes]
+      summary: List all available themes
+      responses:
+        "200":
+          description: Available themes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  themes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Theme"
+                required: [themes]
+
+  /sites:
+    get:
+      operationId: listSites
+      tags: [sites]
+      summary: List all sites (admin only)
+      responses:
+        "200":
+          description: List of sites
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sites:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Site"
+                required: [sites]
+    post:
+      operationId: createSite
+      tags: [sites]
+      summary: Create a new tenant site
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSiteBody"
+      responses:
+        "201":
+          description: Site created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+
+  /sites/{slug}:
+    get:
+      operationId: getSite
+      tags: [sites]
+      summary: Get a site by slug
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Site data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+    put:
+      operationId: updateSite
+      tags: [sites]
+      summary: Update site data
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSiteBody"
+      responses:
+        "200":
+          description: Updated site
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+    delete:
+      operationId: deleteSite
+      tags: [sites]
+      summary: Delete a site
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /sites/{slug}/public:
+    get:
+      operationId: getPublicSite
+      tags: [sites]
+      summary: Get public site data for rendering
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public site data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicSite"
+
+  /sites/{slug}/generate:
+    post:
+      operationId: generateSiteContent
+      tags: [ai]
+      summary: AI-generate and complete site content from business data
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Generated content applied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+
+  /sites/{slug}/contact:
+    post:
+      operationId: submitContactForm
+      tags: [sites]
+      summary: Submit contact form for a tenant site (sends via Mailjet)
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactFormBody"
+      responses:
+        "200":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /sites/{slug}/checkout:
+    post:
+      operationId: createCheckoutSession
+      tags: [billing]
+      summary: Create a Stripe checkout session to upgrade plan
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutBody"
+      responses:
+        "200":
+          description: Stripe checkout URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checkoutUrl:
+                    type: string
+                required: [checkoutUrl]
+
+  /stripe/webhook:
+    post:
+      operationId: stripeWebhook
+      tags: [billing]
+      summary: Stripe webhook handler
+      responses:
+        "200":
+          description: Acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/tenant/login:
+    post:
+      operationId: tenantLogin
+      tags: [auth]
+      summary: Tenant admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantLoginBody"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantSession"
+
+  /auth/tenant/logout:
+    post:
+      operationId: tenantLogout
+      tags: [auth]
+      summary: Tenant admin logout
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/tenant/me:
+    get:
+      operationId: getTenantSession
+      tags: [auth]
+      summary: Get current tenant session
+      responses:
+        "200":
+          description: Current session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantSession"
+
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      summary: Master admin statistics overview
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+
+  /admin/tenants:
+    get:
+      operationId: listTenants
+      tags: [admin]
+      summary: List all tenants with tier and billing info
+      responses:
+        "200":
+          description: All tenants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenants:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TenantRecord"
+                required: [tenants]
+
+  /admin/tenants/{slug}/tier:
+    put:
+      operationId: setTenantTier
+      tags: [admin]
+      summary: Set a tenant's tier (demo/live/pro)
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetTierBody"
+      responses:
+        "200":
+          description: Tier updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantRecord"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +412,394 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+
+    PlaceResult:
+      type: object
+      properties:
+        placeId:
+          type: string
+        name:
+          type: string
+        address:
+          type: string
+        types:
+          type: array
+          items:
+            type: string
+      required: [placeId, name, address, types]
+
+    PlaceDetails:
+      type: object
+      properties:
+        placeId:
+          type: string
+        name:
+          type: string
+        address:
+          type: string
+        postcode:
+          type: string
+        phone:
+          type: string
+        website:
+          type: string
+        email:
+          type: string
+        openingHours:
+          type: array
+          items:
+            type: string
+        rating:
+          type: number
+        photos:
+          type: array
+          items:
+            type: string
+        socialLinks:
+          $ref: "#/components/schemas/SocialLinks"
+        lat:
+          type: number
+        lng:
+          type: number
+      required: [placeId, name, address]
+
+    SocialLinks:
+      type: object
+      properties:
+        instagram:
+          type: string
+        facebook:
+          type: string
+        tiktok:
+          type: string
+        twitter:
+          type: string
+
+    Theme:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        previewImageUrl:
+          type: string
+        style:
+          type: string
+        isDark:
+          type: boolean
+        pages:
+          type: array
+          items:
+            type: string
+      required: [id, name, description, style, isDark, pages]
+
+    Site:
+      type: object
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        placeId:
+          type: string
+        businessName:
+          type: string
+        themeId:
+          type: string
+        tier:
+          type: string
+          enum: [demo, live, pro]
+        address:
+          type: string
+        postcode:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        website:
+          type: string
+        blurb:
+          type: string
+        aiBlurb:
+          type: string
+        openingHours:
+          type: array
+          items:
+            type: string
+        logoUrl:
+          type: string
+        photos:
+          type: array
+          items:
+            type: string
+        brandColors:
+          type: array
+          items:
+            type: string
+        socialLinks:
+          $ref: "#/components/schemas/SocialLinks"
+        headCode:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+        customDomain:
+          type: string
+        demoExpiresAt:
+          type: string
+        stripeCustomerId:
+          type: string
+        stripeSubscriptionId:
+          type: string
+        passwordHash:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, slug, businessName, themeId, tier, createdAt]
+
+    PublicSite:
+      type: object
+      properties:
+        slug:
+          type: string
+        businessName:
+          type: string
+        themeId:
+          type: string
+        tier:
+          type: string
+        address:
+          type: string
+        postcode:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        blurb:
+          type: string
+        aiBlurb:
+          type: string
+        openingHours:
+          type: array
+          items:
+            type: string
+        logoUrl:
+          type: string
+        photos:
+          type: array
+          items:
+            type: string
+        brandColors:
+          type: array
+          items:
+            type: string
+        socialLinks:
+          $ref: "#/components/schemas/SocialLinks"
+        headCode:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+        isActive:
+          type: boolean
+      required: [slug, businessName, themeId, tier, isActive]
+
+    CreateSiteBody:
+      type: object
+      properties:
+        placeId:
+          type: string
+        businessName:
+          type: string
+        themeId:
+          type: string
+        address:
+          type: string
+        postcode:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        website:
+          type: string
+        blurb:
+          type: string
+        openingHours:
+          type: array
+          items:
+            type: string
+        brandColors:
+          type: array
+          items:
+            type: string
+        socialLinks:
+          $ref: "#/components/schemas/SocialLinks"
+        lat:
+          type: number
+        lng:
+          type: number
+        password:
+          type: string
+      required: [businessName, themeId, password]
+
+    UpdateSiteBody:
+      type: object
+      properties:
+        businessName:
+          type: string
+        themeId:
+          type: string
+        address:
+          type: string
+        postcode:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        website:
+          type: string
+        blurb:
+          type: string
+        openingHours:
+          type: array
+          items:
+            type: string
+        logoUrl:
+          type: string
+        photos:
+          type: array
+          items:
+            type: string
+        brandColors:
+          type: array
+          items:
+            type: string
+        socialLinks:
+          $ref: "#/components/schemas/SocialLinks"
+        headCode:
+          type: string
+        customDomain:
+          type: string
+        password:
+          type: string
+
+    ContactFormBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        message:
+          type: string
+      required: [name, email, message]
+
+    CheckoutBody:
+      type: object
+      properties:
+        plan:
+          type: string
+          enum: [live, pro]
+        successUrl:
+          type: string
+        cancelUrl:
+          type: string
+      required: [plan]
+
+    TenantLoginBody:
+      type: object
+      properties:
+        slug:
+          type: string
+        password:
+          type: string
+      required: [slug, password]
+
+    TenantSession:
+      type: object
+      properties:
+        slug:
+          type: string
+        businessName:
+          type: string
+        tier:
+          type: string
+        authenticated:
+          type: boolean
+      required: [authenticated]
+
+    AdminStats:
+      type: object
+      properties:
+        totalSites:
+          type: integer
+        demoSites:
+          type: integer
+        liveSites:
+          type: integer
+        proSites:
+          type: integer
+        expiringThisWeek:
+          type: integer
+        recentSites:
+          type: array
+          items:
+            $ref: "#/components/schemas/TenantRecord"
+      required: [totalSites, demoSites, liveSites, proSites, expiringThisWeek, recentSites]
+
+    TenantRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        businessName:
+          type: string
+        themeId:
+          type: string
+        tier:
+          type: string
+          enum: [demo, live, pro]
+        address:
+          type: string
+        email:
+          type: string
+        logoUrl:
+          type: string
+        demoExpiresAt:
+          type: string
+        stripeSubscriptionId:
+          type: string
+        createdAt:
+          type: string
+      required: [id, slug, businessName, tier, createdAt]
+
+    SetTierBody:
+      type: object
+      properties:
+        tier:
+          type: string
+          enum: [demo, live, pro]
+      required: [tier]
