@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "vFR7U2TjdOGeEGQaxLClN"
+uri = "file://attached_assets/bluebird-bakery-logo.svg"
+type = "image"
+title = "Bluebird Bakery — Vector Logo (transparent background)"
