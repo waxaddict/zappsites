@@ -636,6 +636,8 @@ components:
           type: number
         lng:
           type: number
+        fontPair:
+          type: string
         isActive:
           type: boolean
       required: [slug, businessName, themeId, tier, isActive]
@@ -685,6 +687,8 @@ components:
             type: string
         aiBlurb:
           type: string
+        fontPair:
+          type: string
         isActive:
           type: boolean
       required: [businessName]
@@ -727,6 +731,8 @@ components:
         headCode:
           type: string
         customDomain:
+          type: string
+        fontPair:
           type: string
         password:
           type: string

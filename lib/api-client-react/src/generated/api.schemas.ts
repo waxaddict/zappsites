@@ -111,6 +111,7 @@ export interface PublicSite {
   headCode?: string;
   lat?: number;
   lng?: number;
+  fontPair?: string;
   isActive: boolean;
 }
 
@@ -133,6 +134,7 @@ export interface CreateSiteBody {
   logoUrl?: string;
   photos?: string[];
   aiBlurb?: string;
+  fontPair?: string;
   isActive?: boolean;
 }
 
@@ -152,6 +154,7 @@ export interface UpdateSiteBody {
   socialLinks?: SocialLinks;
   headCode?: string;
   customDomain?: string;
+  fontPair?: string;
   password?: string;
 }
 

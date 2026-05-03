@@ -15,6 +15,7 @@ type PublicSite = {
   logoUrl?: string; photos?: string[]; brandColors?: string[];
   socialLinks?: { instagram?: string; facebook?: string; tiktok?: string };
   headCode?: string; lat?: number; lng?: number; isActive: boolean;
+  fontPair?: string;
 };
 
 type ThemeMode = "light" | "dark" | "warm";
@@ -32,39 +33,82 @@ interface Palette {
   bodyFont: string;
 }
 
-function buildPalette(mode: ThemeMode): Palette {
+// ── Font pair catalogue (must match media.ts and build.tsx) ──────────────────
+const FONT_PAIRS: Record<string, { heading: string; body: string; google: string }> = {
+  editorial: {
+    heading: "'Fraunces', Georgia, serif",
+    body: "'DM Sans', system-ui, sans-serif",
+    google: "Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,700;0,9..144,900;1,9..144,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600",
+  },
+  bold: {
+    heading: "'Anton', Impact, sans-serif",
+    body: "'Inter', system-ui, sans-serif",
+    google: "Anton&family=Inter:wght@300;400;500;600;700",
+  },
+  luxury: {
+    heading: "'Cormorant', Georgia, serif",
+    body: "'DM Sans', system-ui, sans-serif",
+    google: "Cormorant:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600",
+  },
+  modern: {
+    heading: "'Plus Jakarta Sans', system-ui, sans-serif",
+    body: "'Plus Jakarta Sans', system-ui, sans-serif",
+    google: "Plus+Jakarta+Sans:wght@300;400;500;600;700;800",
+  },
+  classic: {
+    heading: "'Playfair Display', Georgia, serif",
+    body: "'Lato', system-ui, sans-serif",
+    google: "Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Lato:wght@300;400;700",
+  },
+  artisan: {
+    heading: "'Caveat', cursive",
+    body: "'Inter', system-ui, sans-serif",
+    google: "Caveat:wght@400;500;600;700&family=Inter:wght@300;400;500;600",
+  },
+};
+
+function resolveFontPair(fontPairId?: string | null) {
+  return (fontPairId && FONT_PAIRS[fontPairId]) ? FONT_PAIRS[fontPairId] : FONT_PAIRS.editorial;
+}
+
+function buildPalette(mode: ThemeMode, fontPairId?: string | null): Palette {
+  const fp = resolveFontPair(fontPairId);
   if (mode === "dark") return {
     mode, bg: "#09090b", surface: "#18181b", border: "rgba(255,255,255,0.08)",
     text: "#fafafa", muted: "rgba(255,255,255,0.5)", subtle: "rgba(255,255,255,0.08)",
     cardBg: "rgba(255,255,255,0.04)",
-    headingFont: "'Fraunces', Georgia, serif", bodyFont: "'DM Sans', system-ui, sans-serif",
+    headingFont: fp.heading, bodyFont: fp.body,
   };
   if (mode === "warm") return {
     mode, bg: "#faf7f2", surface: "#f3ece0", border: "#e8d9c4",
     text: "#1c150e", muted: "#7c6a54", subtle: "#ede4d5",
     cardBg: "#f5eedd",
-    headingFont: "'Fraunces', Georgia, serif", bodyFont: "'DM Sans', system-ui, sans-serif",
+    headingFont: fp.heading, bodyFont: fp.body,
   };
   return {
     mode, bg: "#ffffff", surface: "#f8fafc", border: "#e5e7eb",
     text: "#0a0a0a", muted: "#6b7280", subtle: "#f3f4f6",
     cardBg: "#f9fafb",
-    headingFont: "'Fraunces', Georgia, serif", bodyFont: "'DM Sans', system-ui, sans-serif",
+    headingFont: fp.heading, bodyFont: fp.body,
   };
 }
 
-function FontLoader() {
+function FontLoader({ fontPairId }: { fontPairId?: string | null }) {
   useEffect(() => {
+    const fp = resolveFontPair(fontPairId);
+    const href = `https://fonts.googleapis.com/css2?family=${fp.google}&display=swap`;
     const id = "zw-google-fonts";
-    if (!document.getElementById(id)) {
+    const existing = document.getElementById(id) as HTMLLinkElement | null;
+    if (existing) {
+      if (existing.href !== href) existing.href = href;
+    } else {
       const link = document.createElement("link");
       link.id = id;
       link.rel = "stylesheet";
-      link.href =
-        "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,700;0,9..144,900;1,9..144,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap";
+      link.href = href;
       document.head.appendChild(link);
     }
-  }, []);
+  }, [fontPairId]);
   return null;
 }
 
@@ -293,7 +337,7 @@ function SiteFooter({ site, palette, accent }: { site: PublicSite; palette: Pale
 
 // ─── The One Theme ───────────────────────────────────────────────────────────
 function UnifiedTheme({ site, mode }: { site: PublicSite; mode: ThemeMode }) {
-  const palette = buildPalette(mode);
+  const palette = buildPalette(mode, site.fontPair);
   const photos = site.photos || [];
   const hasHeroPhoto = photos.length > 0;
 
@@ -311,7 +355,7 @@ function UnifiedTheme({ site, mode }: { site: PublicSite; mode: ThemeMode }) {
 
   return (
     <div style={{ background: palette.bg, color: palette.text, fontFamily: palette.bodyFont, scrollBehavior: "smooth" }}>
-      <FontLoader />
+      <FontLoader fontPairId={site.fontPair} />
       <SiteNav site={site} palette={palette} accent={accent} />
 
       {/* ── HERO ────────────────────────────────────────────────────────────── */}

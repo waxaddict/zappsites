@@ -88,6 +88,7 @@ router.post("/", async (req, res) => {
       lng: data.lng,
       logoUrl: data.logoUrl,
       aiBlurb: data.aiBlurb,
+      fontPair: data.fontPair,
     }).returning();
 
     return res.status(201).json(siteToResponse(site));

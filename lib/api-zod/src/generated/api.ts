@@ -153,6 +153,7 @@ export const CreateSiteBody = zod.object({
   logoUrl: zod.string().optional(),
   photos: zod.array(zod.string()).optional(),
   aiBlurb: zod.string().optional(),
+  fontPair: zod.string().optional(),
   isActive: zod.boolean().optional(),
 });
 
@@ -231,6 +232,7 @@ export const UpdateSiteBody = zod.object({
     .optional(),
   headCode: zod.string().optional(),
   customDomain: zod.string().optional(),
+  fontPair: zod.string().optional(),
   password: zod.string().optional(),
 });
 
@@ -316,6 +318,7 @@ export const GetPublicSiteResponse = zod.object({
   headCode: zod.string().optional(),
   lat: zod.number().optional(),
   lng: zod.number().optional(),
+  fontPair: zod.string().optional(),
   isActive: zod.boolean(),
 });
 
