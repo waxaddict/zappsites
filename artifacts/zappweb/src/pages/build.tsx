@@ -105,8 +105,6 @@ function LogoExtractor({
 }: { businessName: string; logoUrl: string; onLogoUrl: (url: string) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<LogoState>("idle");
-  const [previewDark, setPreviewDark] = useState(false);
-  const [description, setDescription] = useState("");
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -125,9 +123,8 @@ function LogoExtractor({
         const err = await res.json().catch(() => ({}));
         throw new Error((err as { error?: string }).error || "Extraction failed");
       }
-      const data = await res.json() as { logoUrl: string; description: string };
+      const data = await res.json() as { logoUrl: string };
       onLogoUrl(data.logoUrl);
-      setDescription(data.description);
       setState("done");
       toast.success("Logo extracted! Preview it below, or retake if needed.");
     } catch (err) {
@@ -199,13 +196,10 @@ function LogoExtractor({
             </div>
           </div>
           <div className="px-4 py-2 bg-card border-t border-border flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs text-muted-foreground">Left: light theme · Right: dark theme (auto-inverted)</p>
-              {description && <p className="text-xs text-muted-foreground/60 mt-0.5 italic truncate">{description}</p>}
-            </div>
+            <p className="text-xs text-muted-foreground">Left: light theme · Right: dark theme (auto-inverted)</p>
             <button
               type="button"
-              onClick={() => { onLogoUrl(""); setState("idle"); setDescription(""); fileRef.current?.click(); }}
+              onClick={() => { onLogoUrl(""); setState("idle"); fileRef.current?.click(); }}
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
             >
               <RotateCcw className="w-3 h-3" /> Retake
