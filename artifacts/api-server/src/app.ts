@@ -1,6 +1,6 @@
 import express, { type Express } from "express";
 import cors from "cors";
-import pinoHttp from "pino-http";
+import * as pinoHttpModule from "pino-http";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { pool } from "@workspace/db";
@@ -10,7 +10,7 @@ import { logger } from "./lib/logger.js";
 const app: Express = express();
 
 app.use(
-  pinoHttp({
+  (pinoHttpModule as unknown as { default: typeof pinoHttpModule.default }).default({
     logger,
   }),
 );
