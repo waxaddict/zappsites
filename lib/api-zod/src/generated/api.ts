@@ -150,6 +150,7 @@ export const CreateSiteBody = zod.object({
   lat: zod.number().optional(),
   lng: zod.number().optional(),
   password: zod.string().optional(),
+  logoUrl: zod.string().optional(),
 });
 
 /**

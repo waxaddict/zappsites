@@ -85,6 +85,7 @@ router.post("/", async (req, res) => {
       socialLinks: data.socialLinks || {},
       lat: data.lat,
       lng: data.lng,
+      logoUrl: data.logoUrl,
     }).returning();
 
     return res.status(201).json(siteToResponse(site));

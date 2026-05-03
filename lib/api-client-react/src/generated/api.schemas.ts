@@ -130,6 +130,7 @@ export interface CreateSiteBody {
   lat?: number;
   lng?: number;
   password?: string;
+  logoUrl?: string;
 }
 
 export interface UpdateSiteBody {

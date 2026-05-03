@@ -6,6 +6,7 @@ import sitesRouter from "./sites.js";
 import authRouter from "./auth.js";
 import adminRouter from "./admin.js";
 import stripeRouter from "./stripe.js";
+import mediaRouter from "./media.js";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use("/sites", sitesRouter);
 router.use("/auth", authRouter);
 router.use("/admin", adminRouter);
 router.use("/stripe", stripeRouter);
+router.use("/media", mediaRouter);
 
 export default router;
