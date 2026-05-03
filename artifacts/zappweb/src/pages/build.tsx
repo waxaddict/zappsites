@@ -116,6 +116,8 @@ function LogoExtractor({
 
   async function pollJob(jobId: string) {
     try {
+      // Poll response is tiny JSON — never contains image data.
+      // When done, logoUrl is either a GCS URL or /api/media/extract-logo/result/:jobId
       const res = await fetch(`/api/media/extract-logo/status/${jobId}`);
       if (!res.ok) throw new Error("Job not found");
       const data = await res.json() as { status: string; logoUrl?: string; error?: string };
@@ -132,12 +134,11 @@ function LogoExtractor({
         setState("error");
         return;
       }
-      // Still pending — poll again in 2 seconds
+      // Still pending — keep polling every 2 seconds
       pollTimer.current = setTimeout(() => pollJob(jobId), 2000);
     } catch {
-      stopPolling();
-      setErrorMsg("Lost connection while waiting — please retry.");
-      setState("error");
+      // Don't give up on a single failed poll — retry in 3 seconds
+      pollTimer.current = setTimeout(() => pollJob(jobId), 3000);
     }
   }
 
