@@ -5,7 +5,7 @@ import {
   getSearchPlacesQueryKey, getGetPlaceDetailsQueryKey,
 } from "@workspace/api-client-react";
 import { toast } from "sonner";
-import { Zap, Search, MapPin, X, Plus, Trash2, ArrowLeft, Upload, Link, Camera } from "lucide-react";
+import { Zap, Search, MapPin, X, Plus, Trash2, ArrowLeft, Upload, Link, Camera, Sparkles, Wand2, Globe } from "lucide-react";
 
 type SocialLinks = { instagram?: string; facebook?: string; tiktok?: string };
 
@@ -205,6 +205,305 @@ function LogoUploader({
   );
 }
 
+// ── AI Brand Analyser ─────────────────────────────────────────────────────────
+type BrandResult = {
+  businessName?: string | null;
+  tagline?: string | null;
+  blurb?: string | null;
+  brandColors?: string[];
+  tone?: string | null;
+  fontStyle?: string | null;
+};
+type AnalyserState = "idle" | "reading" | "done" | "error";
+
+function BrandAnalyser({
+  onApplyBlurb,
+  onApplyColors,
+  onApplyName,
+}: {
+  onApplyBlurb: (blurb: string) => void;
+  onApplyColors: (colors: string[]) => void;
+  onApplyName: (name: string) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [images, setImages] = useState<{ url: string; name: string }[]>([]);
+  const [state, setState] = useState<AnalyserState>("idle");
+  const [result, setResult] = useState<BrandResult | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  function readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []).slice(0, 4 - images.length);
+    e.target.value = "";
+    const newImages = await Promise.all(
+      files.map(async (f) => ({ url: await readFileAsDataUrl(f), name: f.name }))
+    );
+    setImages((prev) => [...prev, ...newImages].slice(0, 4));
+  }
+
+  async function analyse() {
+    if (images.length === 0) return;
+    setState("reading");
+    setResult(null);
+    setErrorMsg("");
+    try {
+      const res = await fetch("/api/media/analyse-brand", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: images.map((i) => i.url) }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? "Analysis failed");
+      }
+      const data = await res.json() as BrandResult;
+      setResult(data);
+      setState("done");
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Analysis failed");
+      setState("error");
+    }
+  }
+
+  function removeImage(idx: number) {
+    setImages((prev) => prev.filter((_, i) => i !== idx));
+    if (state === "done" || state === "error") { setState("idle"); setResult(null); }
+  }
+
+  function reset() {
+    setImages([]);
+    setState("idle");
+    setResult(null);
+    setErrorMsg("");
+  }
+
+  return (
+    <div className="rounded-2xl overflow-hidden border border-purple-500/20 bg-gradient-to-br from-purple-500/5 via-background to-background">
+      <div className="px-4 pt-4 pb-3 flex items-center gap-2 border-b border-purple-500/10">
+        <div className="w-7 h-7 rounded-lg bg-purple-500/15 flex items-center justify-center">
+          <Wand2 className="w-3.5 h-3.5 text-purple-400" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-foreground">AI Brand Reader</p>
+          <p className="text-xs text-muted-foreground">Photo a flyer, business card or menu — AI reads the colours, copy and style</p>
+        </div>
+        <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400">AI</span>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {images.length > 0 && (
+          <div className="flex gap-2 flex-wrap">
+            {images.map((img, i) => (
+              <div key={i} className="relative group">
+                <img src={img.url} alt={img.name} className="w-20 h-20 object-cover rounded-xl border border-border" />
+                <button type="button" onClick={() => removeImage(i)}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+            {images.length < 4 && state !== "reading" && (
+              <button type="button" onClick={() => fileRef.current?.click()}
+                className="w-20 h-20 rounded-xl border-2 border-dashed border-border hover:border-purple-400/50 flex items-center justify-center text-muted-foreground hover:text-purple-400 transition-colors">
+                <Plus className="w-5 h-5" />
+              </button>
+            )}
+          </div>
+        )}
+
+        <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleFiles} className="hidden" />
+
+        {state !== "done" && (
+          <div className="flex gap-2">
+            {images.length === 0 && (
+              <button type="button" onClick={() => fileRef.current?.click()}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-border hover:border-purple-400/50 hover:bg-purple-500/5 text-sm text-muted-foreground hover:text-purple-400 font-medium transition-all"
+                data-testid="button-attach-materials">
+                <Upload className="w-4 h-4" />
+                Attach materials (flyers, business cards, menus)
+              </button>
+            )}
+            {images.length > 0 && state !== "reading" && (
+              <button type="button" onClick={analyse}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-purple-500 text-white text-sm font-semibold hover:bg-purple-600 transition-colors"
+                data-testid="button-analyse-brand">
+                <Sparkles className="w-4 h-4" />
+                Read brand
+              </button>
+            )}
+            {state === "reading" && (
+              <div className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-sm text-purple-400">
+                <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                AI is reading your brand materials…
+              </div>
+            )}
+          </div>
+        )}
+
+        {state === "error" && (
+          <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-destructive">{errorMsg}</p>
+            <button type="button" onClick={() => setState("idle")} className="text-xs font-semibold text-destructive hover:underline shrink-0">Retry</button>
+          </div>
+        )}
+
+        {state === "done" && result && (
+          <div className="space-y-3">
+            <div className="h-px bg-purple-500/10" />
+
+            {result.brandColors && result.brandColors.length > 0 && (
+              <div className="flex items-center gap-3">
+                <div className="flex gap-1.5">
+                  {result.brandColors.map((c, i) => (
+                    <div key={i} className="w-8 h-8 rounded-lg shadow-sm border border-white/10 ring-1 ring-black/10" style={{ background: c }} title={c} />
+                  ))}
+                </div>
+                <p className="text-xs font-mono text-muted-foreground flex-1">{result.brandColors.join("  ")}</p>
+                <button type="button"
+                  onClick={() => { onApplyColors(result.brandColors!.filter(Boolean)); toast.success("Brand colours applied"); }}
+                  className="text-xs font-semibold text-purple-400 hover:text-purple-300 px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 transition-colors"
+                  data-testid="button-apply-colors">
+                  Apply colours
+                </button>
+              </div>
+            )}
+
+            {result.businessName && (
+              <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-purple-500/5 border border-purple-500/10">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Business name</p>
+                  <p className="text-sm font-semibold">{result.businessName}</p>
+                </div>
+                <button type="button"
+                  onClick={() => { onApplyName(result.businessName!); toast.success("Business name applied"); }}
+                  className="text-xs font-semibold text-purple-400 hover:text-purple-300 px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 transition-colors shrink-0">
+                  Apply
+                </button>
+              </div>
+            )}
+
+            {result.tagline && (
+              <div className="px-3 py-2 rounded-xl bg-purple-500/5 border border-purple-500/10">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Tagline found</p>
+                <p className="text-sm italic">"{result.tagline}"</p>
+              </div>
+            )}
+
+            {result.blurb && (
+              <div className="space-y-2">
+                <div className="px-3 py-2 rounded-xl bg-purple-500/5 border border-purple-500/10">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">AI-written description</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{result.blurb}</p>
+                </div>
+                <button type="button"
+                  onClick={() => { onApplyBlurb(result.blurb!); toast.success("Description applied to form"); }}
+                  className="w-full text-xs font-semibold text-purple-400 hover:text-purple-300 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 transition-colors"
+                  data-testid="button-apply-blurb">
+                  Apply description
+                </button>
+              </div>
+            )}
+
+            {(result.tone || result.fontStyle) && (
+              <div className="flex gap-2 flex-wrap">
+                {result.tone && <span className="text-[10px] font-medium px-2 py-1 rounded-full bg-purple-500/10 text-purple-400">{result.tone}</span>}
+                {result.fontStyle && <span className="text-[10px] font-medium px-2 py-1 rounded-full bg-zinc-500/10 text-muted-foreground">{result.fontStyle}</span>}
+              </div>
+            )}
+
+            <button type="button" onClick={reset} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              Clear and start over
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── URL / Social scraper ──────────────────────────────────────────────────────
+type ScrapeResult = { businessName?: string; blurb?: string; services?: string[] };
+
+function ScrapeUrlPanel({ onApplyBlurb }: { onApplyBlurb: (blurb: string) => void }) {
+  const [url, setUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<ScrapeResult | null>(null);
+  const [error, setError] = useState("");
+
+  async function scrape() {
+    if (!url.trim()) return;
+    setLoading(true);
+    setResult(null);
+    setError("");
+    try {
+      const res = await fetch("/api/media/scrape-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(b.error ?? "Failed to scrape");
+      }
+      setResult(await res.json() as ScrapeResult);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reach that URL");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <input type="url" value={url} onChange={e => setUrl(e.target.value)}
+            placeholder="https://theirbusiness.co.uk or Instagram URL"
+            className="w-full pl-9 pr-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            onKeyDown={e => e.key === "Enter" && (e.preventDefault(), scrape())}
+            data-testid="input-scrape-url" />
+        </div>
+        <button type="button" onClick={scrape} disabled={loading || !url.trim()}
+          className="px-4 py-2.5 rounded-lg bg-primary/10 border border-primary/20 text-primary text-sm font-semibold hover:bg-primary/20 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+          data-testid="button-scrape-url">
+          {loading
+            ? <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            : <Sparkles className="w-3.5 h-3.5" />}
+          Pull
+        </button>
+      </div>
+      {error && <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">{error}</p>}
+      {result?.blurb && (
+        <div className="rounded-xl border border-border bg-card p-3 space-y-2">
+          <p className="text-xs text-muted-foreground leading-relaxed">{result.blurb}</p>
+          {result.services && result.services.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {result.services.map((s, i) => (
+                <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{s}</span>
+              ))}
+            </div>
+          )}
+          <button type="button"
+            onClick={() => { onApplyBlurb(result.blurb!); toast.success("Description applied"); setResult(null); setUrl(""); }}
+            className="text-xs font-semibold text-primary hover:underline"
+            data-testid="button-apply-scraped-blurb">
+            Apply description →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main build form ───────────────────────────────────────────────────────────
 export default function BuildPage() {
   const [, setLocation] = useLocation();
@@ -368,6 +667,13 @@ export default function BuildPage() {
             )}
           </div>
 
+          {/* AI Brand Reader */}
+          <BrandAnalyser
+            onApplyBlurb={blurb => setField("blurb", blurb)}
+            onApplyColors={colors => setField("brandColors", colors.length ? colors : [""])}
+            onApplyName={name => setField("businessName", name)}
+          />
+
           {/* Business Info */}
           <Section title="Business Info">
             <Field label="Business Name *">
@@ -426,6 +732,13 @@ export default function BuildPage() {
             <textarea value={form.blurb} onChange={e => setField("blurb", e.target.value)}
               rows={4} className="input-field resize-none"
               placeholder="Tell us about this business…" data-testid="input-blurb" />
+            <div className="mt-3">
+              <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+                <Globe className="w-3 h-3" />
+                Or pull from their website / social profile
+              </p>
+              <ScrapeUrlPanel onApplyBlurb={blurb => setField("blurb", blurb)} />
+            </div>
           </Section>
 
           {/* Brand Colours */}
