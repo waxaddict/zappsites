@@ -286,6 +286,14 @@ function BrandAnalyser({
       const data = await res.json() as BrandResult;
       setResult(data);
       setState("done");
+      // Auto-apply all results immediately — no button clicks needed
+      if (data.brandColors?.length) onApplyColors(data.brandColors.filter(Boolean));
+      if (data.businessName) onApplyName(data.businessName);
+      if (data.blurb) onApplyBlurb(data.blurb);
+      if (data.fontPairId) onApplyFontPair(data.fontPairId);
+      toast.success("Brand applied to form");
+      // Auto-extract logo from the first image
+      if (images.length > 0) extractLogo(images[0].url);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Analysis failed");
       setState("error");
@@ -309,6 +317,8 @@ function BrandAnalyser({
       const { logoUrl } = await res.json() as { logoUrl: string };
       setExtractedLogoUrl(logoUrl);
       setLogoState("done");
+      onApplyLogo(logoUrl);
+      toast.success("Logo applied");
     } catch (err) {
       setLogoError(err instanceof Error ? err.message : "Extraction failed");
       setLogoState("error");
@@ -355,12 +365,6 @@ function BrandAnalyser({
                     <X className="w-3 h-3" />
                   </button>
                 </div>
-                {state === "done" && logoState !== "extracting" && (
-                  <button type="button" onClick={() => extractLogo(img.url)}
-                    className="text-[9px] font-medium text-purple-400 hover:text-purple-300 text-center leading-tight px-1 py-0.5 rounded bg-purple-500/10 hover:bg-purple-500/20 transition-colors w-20">
-                    Extract logo
-                  </button>
-                )}
               </div>
             ))}
             {images.length < 4 && state !== "reading" && (
@@ -412,107 +416,70 @@ function BrandAnalyser({
           <div className="space-y-3">
             <div className="h-px bg-purple-500/10" />
 
-            {result.brandColors && result.brandColors.length > 0 && (
-              <div className="flex items-center gap-3">
-                <div className="flex gap-1.5">
-                  {result.brandColors.map((c, i) => (
-                    <div key={i} className="w-8 h-8 rounded-lg shadow-sm border border-white/10 ring-1 ring-black/10" style={{ background: c }} title={c} />
-                  ))}
-                </div>
-                <p className="text-xs font-mono text-muted-foreground flex-1">{result.brandColors.join("  ")}</p>
-                <button type="button"
-                  onClick={() => { onApplyColors(result.brandColors!.filter(Boolean)); toast.success("Brand colours applied"); }}
-                  className="text-xs font-semibold text-purple-400 hover:text-purple-300 px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 transition-colors"
-                  data-testid="button-apply-colors">
-                  Apply colours
-                </button>
-              </div>
-            )}
+            {/* Applied confirmation — compact, no buttons needed */}
+            <div className="px-3 py-2.5 rounded-xl bg-purple-500/5 border border-purple-500/10 space-y-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-purple-400">Applied to form</p>
 
-            {result.businessName && (
-              <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-purple-500/5 border border-purple-500/10">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Business name</p>
-                  <p className="text-sm font-semibold">{result.businessName}</p>
+              {result.businessName && (
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[10px] text-muted-foreground w-14 shrink-0">Name</span>
+                  <span className="text-xs font-semibold truncate">{result.businessName}</span>
                 </div>
-                <button type="button"
-                  onClick={() => { onApplyName(result.businessName!); toast.success("Business name applied"); }}
-                  className="text-xs font-semibold text-purple-400 hover:text-purple-300 px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 transition-colors shrink-0">
-                  Apply
-                </button>
-              </div>
-            )}
+              )}
+
+              {result.brandColors && result.brandColors.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-muted-foreground w-14 shrink-0">Colours</span>
+                  <div className="flex gap-1">
+                    {result.brandColors.map((c, i) => (
+                      <div key={i} className="w-5 h-5 rounded-md border border-white/10" style={{ background: c }} title={c} />
+                    ))}
+                  </div>
+                  <span className="text-[10px] font-mono text-muted-foreground">{result.brandColors.join(" ")}</span>
+                </div>
+              )}
+
+              {result.fontPairId && FONT_PAIRS[result.fontPairId] && (
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[10px] text-muted-foreground w-14 shrink-0">Fonts</span>
+                  <span className="text-xs">{FONT_PAIRS[result.fontPairId].label}</span>
+                </div>
+              )}
+
+              {result.blurb && (
+                <div className="flex gap-2">
+                  <span className="text-[10px] text-muted-foreground w-14 shrink-0 pt-0.5">Bio</span>
+                  <span className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{result.blurb}</span>
+                </div>
+              )}
+
+              {/* Logo extraction status */}
+              {logoState === "extracting" && (
+                <div className="flex items-center gap-2 text-[10px] text-purple-400">
+                  <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                  Extracting logo…
+                </div>
+              )}
+              {logoState === "done" && extractedLogoUrl && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-muted-foreground w-14 shrink-0">Logo</span>
+                  <img src={extractedLogoUrl} alt="Logo" className="w-8 h-8 object-contain rounded-md border border-border bg-white/5 p-0.5" />
+                  <span className="text-[10px] text-green-400">Applied ✓</span>
+                </div>
+              )}
+              {logoState === "error" && (
+                <div className="flex gap-2">
+                  <span className="text-[10px] text-muted-foreground w-14 shrink-0">Logo</span>
+                  <span className="text-[10px] text-destructive">{logoError}</span>
+                </div>
+              )}
+            </div>
 
             {result.tagline && (
-              <div className="px-3 py-2 rounded-xl bg-purple-500/5 border border-purple-500/10">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Tagline found</p>
-                <p className="text-sm italic">"{result.tagline}"</p>
-              </div>
+              <p className="text-xs italic text-muted-foreground px-1">"{result.tagline}"</p>
             )}
-
-            {result.blurb && (
-              <div className="space-y-2">
-                <div className="px-3 py-2 rounded-xl bg-purple-500/5 border border-purple-500/10">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">AI-written description</p>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{result.blurb}</p>
-                </div>
-                <button type="button"
-                  onClick={() => { onApplyBlurb(result.blurb!); toast.success("Description applied to form"); }}
-                  className="w-full text-xs font-semibold text-purple-400 hover:text-purple-300 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 transition-colors"
-                  data-testid="button-apply-blurb">
-                  Apply description
-                </button>
-              </div>
-            )}
-
-            {/* Font pair suggestion */}
-            {result.fontPairId && FONT_PAIRS[result.fontPairId] && (
-              <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-purple-500/5 border border-purple-500/10">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Suggested font style</p>
-                  <p className="text-sm font-semibold">{FONT_PAIRS[result.fontPairId].label}</p>
-                  <p className="text-[10px] text-muted-foreground">{FONT_PAIRS[result.fontPairId].heading} + {FONT_PAIRS[result.fontPairId].body}</p>
-                </div>
-                <button type="button"
-                  onClick={() => { onApplyFontPair(result.fontPairId!); toast.success("Font style applied"); }}
-                  className="text-xs font-semibold text-purple-400 hover:text-purple-300 px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 transition-colors shrink-0"
-                  data-testid="button-apply-font">
-                  Apply
-                </button>
-              </div>
-            )}
-
-            {(result.tone || result.fontStyle) && (
-              <div className="flex gap-2 flex-wrap">
-                {result.tone && <span className="text-[10px] font-medium px-2 py-1 rounded-full bg-purple-500/10 text-purple-400">{result.tone}</span>}
-                {result.fontStyle && <span className="text-[10px] font-medium px-2 py-1 rounded-full bg-zinc-500/10 text-muted-foreground">{result.fontStyle}</span>}
-              </div>
-            )}
-
-            {/* Logo extraction */}
-            {logoState === "extracting" && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-purple-500/5 border border-purple-500/10 text-sm text-purple-400">
-                <div className="w-3.5 h-3.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin shrink-0" />
-                Cropping logo from photo…
-              </div>
-            )}
-            {logoState === "done" && extractedLogoUrl && (
-              <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-purple-500/5 border border-purple-500/10">
-                <img src={extractedLogoUrl} alt="Extracted logo" className="w-14 h-14 object-contain rounded-lg border border-border bg-white/5 p-1" />
-                <div className="flex-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Logo extracted</p>
-                  <p className="text-xs text-muted-foreground">Cropped from your flyer</p>
-                </div>
-                <button type="button"
-                  onClick={() => { onApplyLogo(extractedLogoUrl!); toast.success("Logo applied"); setLogoState("idle"); }}
-                  className="text-xs font-semibold text-purple-400 hover:text-purple-300 px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 transition-colors shrink-0"
-                  data-testid="button-apply-logo">
-                  Use as logo
-                </button>
-              </div>
-            )}
-            {logoState === "error" && (
-              <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">{logoError}</p>
+            {result.tone && (
+              <span className="inline-block text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400">{result.tone}</span>
             )}
 
             <button type="button" onClick={reset} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
